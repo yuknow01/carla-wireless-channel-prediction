@@ -1,0 +1,86 @@
+# Python cache/build artifacts
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local agent/tooling state
+.agents/
+.codex/
+.codex_tmp/
+
+# Large datasets, simulators, generated scenes
+wireless-dataset/
+CARLA_0.9.15/
+blender/
+sionna_scene_final/
+assets/
+web/
+
+# Training outputs and checkpoints
+checkpoints/
+runs/
+logs/
+*.pt
+*.pth
+*.ckpt
+*.onnx
+*.npz
+*.npy
+*.h5
+*.hdf5
+
+# Multimodal experiment outputs
+multimodal_code_index/run_multimodal_16to4/outputs/
+
+# Symlink/index folders that point to local-only or omitted trees
+/models
+multimodal_code_index/01_dual_root_4models/
+multimodal_code_index/02_task04_active/
+multimodal_code_index/03_root_model_zoo/
+multimodal_code_index/04_docs/
+multimodal_code_index/05_current_data/
+
+# Older collection/simulation/validation code outside the minimal release
+feedback/
+feedback_solve/
+reports/
+scripts/
+wireless_dataset_validation/
+
+# Omitted top-level docs/scripts for dataset generation, simulation, and old runs
+/MULTIMODAL_ARCHITECTURE.md
+/PRESENTATION_ARCHITECTURE_SPEC.md
+/SIM_SETTINGS.md
+/blender_to_sionna.py
+/channel_sim.py
+/channel_sim_sionna.py
+/collect_1ms.py
+/collect_data.py
+/collect_final.py
+/evaluate.py
+/export_carla_geometry.py
+/generate_synthetic.py
+/kill_1ms_pilot.sh
+/monitor_1ms.sh
+/postprocess_sionna.py
+/progress_8sc.sh
+/run_1ms_pilot.sh
+/run_8sc_pilot.sh
+/run_carla.sh
+/run_collect_final.sh
+/setup_blender.sh
+/setup_carla.sh
+/setup_symlinks.py
+/train.py
+/train_axial.py
+/train_chiron.py
+/train_nova_gpu3.py
+/train_nova_temporal_gpu123.py
+/verify_determinism.py
+/verify_s_gates.py
+
+# Local notes and generated transfer logs
+TRANSFER_NOTES.md
