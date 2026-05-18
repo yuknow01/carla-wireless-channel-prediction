@@ -51,9 +51,7 @@ scripts/
 wireless_dataset_validation/
 
 # Omitted top-level docs/scripts for dataset generation, simulation, and old runs
-/MULTIMODAL_ARCHITECTURE.md
 /PRESENTATION_ARCHITECTURE_SPEC.md
-/SIM_SETTINGS.md
 /blender_to_sionna.py
 /channel_sim.py
 /channel_sim_sionna.py
