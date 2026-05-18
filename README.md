@@ -5,11 +5,7 @@ prediction models for multimodal wireless channel forecasting.
 
 The current active experiment predicts `P=4` future channel frames from `K=16`
 past channel frames and, in multimodal mode, the latest-past RGB image sequence.
-The canonical training entrypoint is:
-
-```bash
-python multimodal_code_index/run_multimodal_16to4/run_16to4.py
-```
+Training commands and smoke checks are documented in [EXPERIMENTS.md](EXPERIMENTS.md).
 
 ## Project Map
 
@@ -44,7 +40,8 @@ PyTorch training
 
 ## Active Dataset Convention
 
-The current `collect_final.py` default is the `fr1_3p5ghz` radio profile:
+The current `collect_final.py` default is the `fr1_3p5ghz` radio profile,
+which means a 3.5 GHz FR1/sub-6 GHz channel setting:
 
 | Item | Current value |
 |---|---|
@@ -52,18 +49,15 @@ The current `collect_final.py` default is the `fr1_3p5ghz` radio profile:
 | Carrier | `3.5 GHz` |
 | Bandwidth | `50 MHz` |
 | Raw subcarriers | `512` |
+| Selected subcarriers | `64` |
 | BS antennas | `16` |
 | Channel interval | `0.5 ms` |
 | Sensor interval | `1 ms` |
 | Scenarios | `sc01` to `sc08` |
 
-The 16-to-4 experiment usually selects the first `64` subcarriers from the
-raw 512-subcarrier channel files for Task04-compatible comparisons. Use
-`--num-subcarriers 512` when training on the full band.
-
-Legacy note: the older `dataset_final/` convention corresponds to the
-`fr2_28ghz` profile and is still useful for comparison, but it should not be
-mixed with `wireless-dataset/` results without explicitly saying so.
+The 16-to-4 experiment defaults to `Nsc=64` by selecting the first 64
+subcarriers from the raw 512-subcarrier channel files. Use `--num-subcarriers
+512` when training on the full band.
 
 ## Current Task
 
@@ -83,58 +77,25 @@ Output:
 
 `2` is the real/imaginary representation of the complex channel.
 
-## Quick Start
-
-Smoke check one model:
-
-```bash
-cd /mnt/ssd_7t_2/carla-wireless-dataset
-python multimodal_code_index/run_multimodal_16to4/smoke_16to4.py \
-  --model lstm \
-  --device cuda
-```
-
-Short training run:
-
-```bash
-python multimodal_code_index/run_multimodal_16to4/run_16to4.py \
-  --model chiron \
-  --epochs 5 \
-  --batch-size 4 \
-  --max-train-samples 1024 \
-  --max-val-samples 256
-```
-
-Run channel-only LWM-Temporal:
-
-```bash
-python multimodal_code_index/run_multimodal_16to4/run_16to4.py \
-  --mode channel_only \
-  --model lwm_temporal \
-  --epochs 30 \
-  --batch-size 4
-```
-
-Run all four multimodal models:
-
-```bash
-python multimodal_code_index/run_multimodal_16to4/run_16to4.py \
-  --mode multimodal \
-  --model all \
-  --epochs 30 \
-  --batch-size 4 \
-  --amp
-```
-
 ## Important Source Files
 
 Simulation and data generation:
 
+- Pipeline: CARLA scenario collection -> Blender scene/material conversion -> Sionna ray tracing -> OFDM channel export.
+- Detailed simulation parameters are documented in [SIM_SETTINGS.md](SIM_SETTINGS.md).
 - `collect_final.py`: current full data generation pipeline
 - `collect_1ms.py`: 1 ms sensor re-render helper
 - `export_carla_geometry.py`: CARLA geometry export
 - `blender_to_sionna.py`: Blender material conversion and Sionna scene export
-- `channel_sim.py`, `channel_sim_sionna.py`: channel generation utilities
+- `channel_sim.py`: standalone geometric OFDM channel simulator
+- `channel_sim_sionna.py`: Sionna-backed channel simulator with a compatible `ChannelSimulator` interface
+
+Channel simulator progression:
+
+- `channel_sim.py` was the first lightweight simulator. It generates `H(f)` directly from an analytic geometric model by assuming LOS/NLOS paths, path gains, delays, AoD, and Doppler. This made it possible to create channel-shaped data during CARLA collection without running Blender, Sionna, or GPU-heavy ray tracing.
+- `channel_sim_sionna.py` was the next step. It keeps the same `ChannelSimulator.generate_channel(...)` interface, but replaces the analytic path assumptions with Sionna ray tracing in a simple street-canyon scene. This acted as a bridge between the fast geometric prototype and the final CARLA/Blender/Sionna pipeline.
+- These two files are alternative channel-generation implementations, not a sequential data flow. `channel_sim_sionna.py` does not take the output of `channel_sim.py`; both produce `H(f)` through different modeling assumptions.
+- The current dataset pipeline is `collect_final.py`. It calls `collect_data.py` with `--skip-geometric-channels`, then generates the final channel files with CARLA geometry, Blender scene conversion, and Sionna ray tracing. The final outputs include CIR, OFDM channel matrices, the legacy `channels/` alias, and angle-delay matrices.
 
 Dataset and training:
 
