@@ -65,6 +65,22 @@ def _normalize_image(img: np.ndarray) -> np.ndarray:
     return (img - IMAGENET_MEAN) / IMAGENET_STD
 
 
+def _discover_image_cache(sensor_dir_path: Path) -> Optional[Dict[str, str]]:
+    cache_dir = sensor_dir_path / "image_cache"
+    images_path = cache_dir / "images_224_uint8.npy"
+    indices_path = cache_dir / "image_indices.npy"
+    metadata_path = cache_dir / "metadata.json"
+
+    if not images_path.exists() or not indices_path.exists():
+        return None
+
+    return {
+        "images_path": str(images_path),
+        "indices_path": str(indices_path),
+        "metadata_path": str(metadata_path) if metadata_path.exists() else "",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Index building
 # ---------------------------------------------------------------------------
@@ -81,6 +97,7 @@ def _discover_scenario_data(scenario_dir: str, sensor_dir: Optional[str] = None)
         "channel_paths": dict int -> str
         "image_indices": sorted list of int
         "image_paths": dict int -> str
+        "image_cache": dict or None
         "position_paths": dict int -> str
         "velocity_paths": dict int -> str
         "metadata": dict or None
@@ -100,7 +117,14 @@ def _discover_scenario_data(scenario_dir: str, sensor_dir: Optional[str] = None)
     # dataset_final/scXX and 1ms camera frames from dataset_1ms/scXX.
     img_dir = sensor_dir_path / "images"
     img_paths = {}
-    if img_dir.exists():
+    image_cache = _discover_image_cache(sensor_dir_path)
+    img_indices_from_cache = []
+    if image_cache is not None:
+        img_indices_from_cache = [
+            int(idx)
+            for idx in np.load(image_cache["indices_path"], mmap_mode="r")
+        ]
+    elif img_dir.exists():
         for f in sorted(img_dir.glob("frame_*.png")):
             idx = int(f.stem.split("_")[-1])
             img_paths[idx] = str(f)
@@ -129,7 +153,7 @@ def _discover_scenario_data(scenario_dir: str, sensor_dir: Optional[str] = None)
             metadata = json.load(f)
 
     ch_indices = sorted(ch_paths.keys())
-    img_indices = sorted(img_paths.keys())
+    img_indices = img_indices_from_cache or sorted(img_paths.keys())
 
     sensor_metadata = None
     sensor_meta_path = sensor_dir_path / "metadata.json"
@@ -142,6 +166,7 @@ def _discover_scenario_data(scenario_dir: str, sensor_dir: Optional[str] = None)
         "channel_paths": ch_paths,
         "image_indices": img_indices,
         "image_paths": img_paths,
+        "image_cache": image_cache,
         "position_paths": pos_paths,
         "velocity_paths": vel_paths,
         "metadata": metadata,
@@ -326,6 +351,7 @@ class ChannelPredictionDataset(Dataset):
         self.channel_paths = data_info["channel_paths"]
         self.image_indices = data_info["image_indices"]
         self.image_paths = data_info["image_paths"]
+        self.image_cache = data_info["image_cache"]
         self.metadata = data_info["metadata"]
         self.sensor_metadata = data_info["sensor_metadata"]
 
@@ -411,9 +437,31 @@ class ChannelPredictionDataset(Dataset):
             self.image_size[1],
             dtype=torch.float32,
         )
+        self._image_cache_array = None
+        self._image_cache_rows = {}
+        if self.use_image and self.image_cache is not None:
+            self._image_cache_array = np.load(
+                self.image_cache["images_path"],
+                mmap_mode="r",
+            )
+            cache_indices = np.load(self.image_cache["indices_path"], mmap_mode="r")
+            self._image_cache_rows = {
+                int(img_idx): row for row, img_idx in enumerate(cache_indices)
+            }
 
     def __len__(self) -> int:
         return len(self.valid_indices)
+
+    def _load_cached_image(self, img_idx: int) -> np.ndarray:
+        row = self._image_cache_rows[img_idx]
+        img = np.asarray(self._image_cache_array[row], dtype=np.float32) / 255.0
+        if img.ndim != 3 or img.shape[-1] != 3:
+            raise ValueError(f"Cached image has invalid shape: {img.shape}")
+        if img.shape[0] != self.image_size[0] or img.shape[1] != self.image_size[1]:
+            raise ValueError(
+                f"Cached image shape {img.shape[:2]} does not match requested {self.image_size}"
+            )
+        return img.transpose(2, 0, 1)
 
     def _load_image_sequence(self, t: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         image_seq: List[torch.Tensor] = []
@@ -448,9 +496,12 @@ class ChannelPredictionDataset(Dataset):
             validity = [item[2] for item in filtered]
 
         for img_idx, dist, is_valid in zip(indices, dists, validity):
-            if is_valid and img_idx in self.image_paths:
+            if is_valid and (img_idx in self._image_cache_rows or img_idx in self.image_paths):
                 try:
-                    img = _load_and_preprocess_image(self.image_paths[img_idx], self.image_size)
+                    if img_idx in self._image_cache_rows:
+                        img = self._load_cached_image(img_idx)
+                    else:
+                        img = _load_and_preprocess_image(self.image_paths[img_idx], self.image_size)
                     img = _normalize_image(img)
                     image_seq.append(torch.from_numpy(img))
                     time_offsets.append(torch.tensor([dist * self.delta_t], dtype=torch.float32))
