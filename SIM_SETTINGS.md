@@ -96,6 +96,111 @@ CW_RADIO_PROFILE=fr2_28ghz python collect_final.py
 | `sc07` | Southern boulevard, BS on building wall | `(5, -50, 7)` | `-15 / 0` | `606` |
 | `sc08` | E-W street, elevated rooftop BS | `(5, 38, 12)` | `-22 / 180` | `707` |
 
+## Scenario Descriptions
+
+This section summarizes the role of each scenario in the dataset. The scenarios
+share the same CARLA map, radio profile, traffic count, and sensor settings, but
+change the BS pose, camera view, UE vehicle type, and route seed. The images
+below are representative BS-view RGB frames and can be replaced later with
+curated figures if needed.
+
+Common environment:
+
+- Map: `Town10HD_Opt`
+- Radio profile: `fr1_3p5ghz`, `3.5 GHz`, `50 MHz`, `512` raw subcarriers
+- Antennas: `16` BS antennas and `1` UE antenna
+- Traffic: `20` spawned vehicles
+- Duration: `400000` simulation steps, or `200 s` at `0.5 ms` per step
+- Stored modalities: OFDM channel, CIR, angle-delay, RGB, LiDAR, Radar,
+  UE position/velocity, and surrounding vehicle states
+
+### `sc01` - East-West Street Baseline
+
+![Scenario sc01](./docs/images/scenarios/sc01_representative.jpg)
+
+- Main features: east-west street with the BS mounted on an eastern building
+  wall.
+- Data/environment: BS position `(5, 38, 7)`, camera pitch/yaw `-15 / 180`,
+  seed `42`, UE vehicle `vehicle.chevrolet.impala`.
+- Usage: baseline scenario for single-scenario channel prediction and
+  channel-only versus multimodal comparisons.
+
+### `sc02` - West-Side BS on East-West Street
+
+![Scenario sc02](./docs/images/scenarios/sc02_representative.jpg)
+
+- Main features: east-west street layout with the BS shifted to the western
+  side of the map.
+- Data/environment: BS position `(-75, 38, 7)`, camera pitch/yaw `-15 / 180`,
+  seed `101`, UE vehicle `vehicle.dodge.charger_2020`.
+- Usage: tests whether models trained on one BS placement remain effective when
+  the same road family is observed from a different BS location.
+
+### `sc03` - North-South Road and Corner BS
+
+![Scenario sc03](./docs/images/scenarios/sc03_representative.jpg)
+
+- Main features: north-south road geometry with the BS placed near an eastern
+  building corner.
+- Data/environment: BS position `(112, 35, 7)`, camera pitch/yaw `-15 / -90`,
+  seed `202`, UE vehicle `vehicle.audi.tt`.
+- Usage: emphasizes larger BS-UE distance variation and stronger viewpoint
+  changes than the east-west baseline.
+
+### `sc04` - South-West Junction
+
+![Scenario sc04](./docs/images/scenarios/sc04_representative.jpg)
+
+- Main features: junction scene with the BS mounted on a south-west building
+  facade.
+- Data/environment: BS position `(-50, -30, 7)`, camera pitch/yaw `-18 / 45`,
+  seed `303`, UE vehicle `vehicle.mini.cooper_s_2021`.
+- Usage: evaluates prediction in a more complex intersection setting where
+  geometry, reflections, and potential blockage patterns vary rapidly.
+
+### `sc05` - North-West Road Segment
+
+![Scenario sc05](./docs/images/scenarios/sc05_representative.jpg)
+
+- Main features: north-west road segment with an oblique BS camera view.
+- Data/environment: BS position `(-85, 35, 7)`, camera pitch/yaw `-15 / 135`,
+  seed `404`, UE vehicle `vehicle.nissan.patrol`.
+- Usage: adds a different road region and vehicle trajectory distribution for
+  scenario diversity and generalization checks.
+
+### `sc06` - Center Junction and Sidewalk-Pole BS
+
+![Scenario sc06](./docs/images/scenarios/sc06_representative.jpg)
+
+- Main features: central junction with the BS placed lower than most building
+  wall deployments.
+- Data/environment: BS position `(-43, 8, 6)`, camera pitch/yaw `-15 / 90`,
+  seed `505`, UE vehicle `vehicle.volkswagen.t2`.
+- Usage: captures a central urban viewpoint where nearby traffic and junction
+  geometry can affect short-horizon channel prediction.
+
+### `sc07` - Southern Boulevard
+
+![Scenario sc07](./docs/images/scenarios/sc07_representative.jpg)
+
+- Main features: southern boulevard environment with the BS viewing toward the
+  north.
+- Data/environment: BS position `(5, -50, 7)`, camera pitch/yaw `-15 / 0`,
+  seed `606`, UE vehicle `vehicle.tesla.cybertruck`.
+- Usage: provides another wide-area mobility case for testing robustness across
+  route seeds and BS-UE geometry.
+
+### `sc08` - Elevated BS Variant
+
+![Scenario sc08](./docs/images/scenarios/sc08_representative.jpg)
+
+- Main features: east-west street variant using an elevated BS at the same
+  horizontal location as `sc01`.
+- Data/environment: BS position `(5, 38, 12)`, camera pitch/yaw `-22 / 180`,
+  seed `707`, UE vehicle `vehicle.dodge.charger_2020`.
+- Usage: isolates the effect of BS height and camera pitch on channel
+  prediction while keeping the road family close to the baseline setup.
+
 ## Sensors
 
 All active sensors are mounted from the BS viewpoint.
