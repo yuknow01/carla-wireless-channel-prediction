@@ -114,6 +114,23 @@ Common environment:
 - Stored modalities: OFDM channel, CIR, angle-delay, RGB, LiDAR, Radar,
   UE position/velocity, and surrounding vehicle states
 
+### Scenario Summary
+
+The scenarios differ mainly in BS placement, camera direction, UE vehicle type,
+and route seed. They do not represent different radio bands or different channel
+formats.
+
+| Scenario | Main features | Research use |
+|---|---|---|
+| `sc01` | East-west street with the BS near an eastern building wall | Baseline V2I scenario for observing typical channel variation around the BS |
+| `sc02` | East-west street with the BS shifted to the western building side | Similar road family to `sc01`, but with different BS-UE distance and angle conditions |
+| `sc03` | North-south road with the BS near an eastern building corner | Larger mobility area and stronger BS-UE distance/viewpoint changes |
+| `sc04` | South-west junction with the BS on a building facade | More complex junction setting with rapidly changing LoS/NLoS, reflections, and blockage patterns |
+| `sc05` | North-west road segment with a building-wall BS | Additional road region for checking generalization across geometry and BS placement |
+| `sc06` | Central junction with a lower sidewalk-pole-style BS | Urban junction viewpoint where nearby traffic and road geometry affect short-horizon prediction |
+| `sc07` | Southern boulevard with the BS on a building wall | Wide-area mobility case with larger distance variation, similar in spirit to `sc03` |
+| `sc08` | East-west street variant with an elevated `12 m` BS | Height-variation case for comparing against the `sc01` road family |
+
 ### `sc01` - East-West Street Baseline
 
 ![Scenario sc01](./docs/images/scenarios/sc01_representative.jpg)
