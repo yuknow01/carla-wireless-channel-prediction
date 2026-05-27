@@ -184,6 +184,119 @@ output         = GatedFFN(channel_tokens)               # SwiGLU FFN + residual
 `SpatialBlock`, `GatedFFN`, `ChironBlock`, and `ChannelPredictionHead`. These
 are detailed in §8. LSTM and LWM models do not use them.
 
+### 4.4 Code-level multimodal algorithm
+
+This section maps the algorithmic description directly to the implementation.
+
+#### Step 1: build one supervised sample
+
+Source: `dataset_loader.py::ChannelPredictionDataset.__getitem__`
+
+```python
+t = self.valid_indices[idx]
+K = self.history_len
+P = self.prediction_horizon
+
+history = []
+for k in range(t - K + 1, t + 1):
+    H = np.load(self.channel_paths[k])
+    H_real = channel_to_real(H).astype(np.float32)
+    history.append(H_real)
+history = np.stack(history, axis=0)
+
+target_frames = []
+for p in range(1, P + 1):
+    H_t = np.load(self.channel_paths[t + p])
+    target_frames.append(channel_to_real(H_t).astype(np.float32))
+target = np.stack(target_frames, axis=0)
+
+image_seq_t, image_dt_t, image_valid_t = self._load_image_sequence(t)
+```
+
+Algorithmically, each training sample uses channel frames up to time `t` as
+input and predicts future channel frames `t+1 ... t+P`. The image sequence is
+loaded with the `latest_past` policy at the same reference time `t`, so images
+are context features, not direct future labels.
+
+#### Step 2: turn RGB frames into image tokens
+
+Source: `multimodal_code_index/models/lstm_multimodal.py`
+
+```python
+_, T, C, H, W = image_seq.shape
+flat_images = image_seq.reshape(B * T, C, H, W)
+frame_tokens = self.image_encoder(flat_images)  # (B*T, 49, 256)
+tokens_per_frame = frame_tokens.size(1)
+
+real_img_tokens = frame_tokens.view(
+    B, T, tokens_per_frame, self.embed_dim,
+).reshape(B, T * tokens_per_frame, self.embed_dim)
+
+valid = image_valid_mask.bool()[:, :T].to(real_img_tokens.device)
+token_valid = valid.unsqueeze(-1).expand(
+    B, T, tokens_per_frame,
+).reshape(B, T * tokens_per_frame)
+
+no_img_tokens = self.no_image_token.expand(B, real_img_tokens.size(1), -1)
+img_tokens = torch.where(
+    token_valid.unsqueeze(-1),
+    real_img_tokens,
+    no_img_tokens,
+)
+sensor_list.append(img_tokens)
+```
+
+For the current default `T=8`, each image contributes `7 x 7 = 49` ResNet tokens,
+so the image branch supplies `8 * 49 = 392` sensor tokens per sample. Invalid
+left-padded frames are replaced by a learned `no_image_token`.
+
+#### Step 3: fuse channel tokens with image tokens
+
+Source: `multimodal_code_index/models/fusion_blocks.py`
+
+```python
+residual = channel_tokens
+
+q = self.q_norm(channel_tokens)
+kv = self.kv_norm(image_tokens)
+attn_out, _ = self.cross_attn(
+    q, kv, kv,
+    key_padding_mask=image_key_padding_mask,
+)
+attn_out = self.attn_drop(attn_out)
+
+gate_input = torch.cat([residual, attn_out], dim=-1)
+g = self.gate(gate_input)
+channel_tokens = residual + g * attn_out
+
+return self.ffn(channel_tokens)
+```
+
+This is channel-query cross-attention: channel tokens are the queries, and image
+tokens are keys/values. The sigmoid gate controls how much visual information is
+added back into each channel token before the feed-forward block.
+
+#### Step 4: decode fused tokens into future channels
+
+Source: `multimodal_code_index/models/lstm_multimodal.py`
+
+```python
+sensor_tokens = torch.cat(sensor_list, dim=1)
+
+fused = ch_tokens
+for block in self.fusion_blocks:
+    fused = block(fused, sensor_tokens)
+
+out = self.head(fused)
+out = out.reshape(B, Nsc, P, Na, 2)
+return out.permute(0, 2, 3, 1, 4).contiguous()
+```
+
+The fusion output is still an abstract representation. Actual channel values are
+emitted only by the prediction head. This is why the architecture is best
+described as hidden-state-level late fusion followed by direct multi-step
+regression.
+
 ---
 
 ## 5. Model 1: LSTM Multimodal (deep dive)
