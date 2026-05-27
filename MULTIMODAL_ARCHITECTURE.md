@@ -65,6 +65,9 @@ Sources: `multimodal_code_index/train_multimodal4.py`,
 
 The four models share the same high-level skeleton:
 
+<img width="1024" height="559" alt="image" src="https://github.com/user-attachments/assets/a01869f2-35e9-43ef-a4a0-05a6a98126ef" />
+
+
 ```
             ┌─────────────────────────────┐
             │     Representation stage    │   (no actual prediction here)
