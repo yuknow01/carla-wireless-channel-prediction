@@ -15,6 +15,7 @@ Training commands and smoke checks are documented in [EXPERIMENTS.md](EXPERIMENT
 | [DATASET_SPEC.md](DATASET_SPEC.md) | Dataset directories, file formats, sample construction, and tensor shapes |
 | [MULTIMODAL_ARCHITECTURE.md](MULTIMODAL_ARCHITECTURE.md) | Model architecture for LSTM, LWM, LWM-Temporal, and Chiron |
 | [EXPERIMENTS.md](EXPERIMENTS.md) | Training commands, checkpoints, logs, and result tracking |
+| [EXPERIMENT_RESULTS.md](EXPERIMENT_RESULTS.md) | Current sc01/sc04 channel-only vs multimodal results and metric interpretation |
 | [multimodal_code_index/run_multimodal_16to4/README.md](multimodal_code_index/run_multimodal_16to4/README.md) | Detailed notes for the current 16-to-4 experiment runner |
 
 ## Pipeline Overview

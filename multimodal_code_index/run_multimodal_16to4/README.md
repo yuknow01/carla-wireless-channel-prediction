@@ -280,6 +280,9 @@ Note: unless `--no-normalize` is passed, NMSE is computed on min-max-normalized
 real/imag tensors. For physical-scale NMSE, denormalize `pred` and `target`
 before calling `nmse`.
 
+Current result tables and metric interpretation are tracked in
+`../../EXPERIMENT_RESULTS.md`.
+
 ## Model Files
 
 The selected `--model` decides which model file is used:

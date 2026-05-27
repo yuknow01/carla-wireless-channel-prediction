@@ -842,6 +842,9 @@ When describing results, include:
 This avoids mixing legacy `dataset_final/` results with current
 `wireless-dataset/` results.
 
+Current result tables and metric interpretation are tracked separately in
+`EXPERIMENT_RESULTS.md`.
+
 ---
 
 ## Code references
