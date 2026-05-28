@@ -300,6 +300,51 @@ emitted only by the prediction head. This is why the architecture is best
 described as hidden-state-level late fusion followed by direct multi-step
 regression.
 
+### 4.5 Channel-only path is also head-decoded
+
+`channel_only` does **not** mean the channel backbone directly emits the final
+future channel. It means the sensor branch and fusion blocks are skipped, and
+the channel representation is decoded by the same prediction head.
+
+For LSTM and LWM, the branch is explicit:
+
+```python
+ch_tokens = self._encode_channel(channel_history)
+
+if self.mode == "channel_only":
+    out = self.head(ch_tokens)
+    out = out.reshape(B, Nsc, P, Na, 2)
+    return out.permute(0, 2, 3, 1, 4).contiguous()
+```
+
+The corresponding multimodal path inserts sensor encoding and fusion before the
+same kind of head decode:
+
+```python
+sensor_tokens = torch.cat(sensor_list, dim=1)
+
+fused = ch_tokens
+for block in self.fusion_blocks:
+    fused = block(fused, sensor_tokens)
+
+out = self.head(fused)
+```
+
+So the conceptual difference is:
+
+```text
+channel_only:
+  channel_history -> channel backbone -> channel tokens -> head -> prediction
+
+multimodal:
+  channel_history -> channel backbone -> channel tokens
+  image_seq       -> image encoder     -> image tokens
+  channel tokens + image tokens -> fusion -> fused tokens -> head -> prediction
+```
+
+For every model, the physical `(B, P, Na, Nsc, 2)` prediction appears only after
+the final head/decoder, never at the channel token itself.
+
 ---
 
 ## 5. Model 1: LSTM Multimodal (deep dive)
@@ -498,6 +543,36 @@ Images influence the prediction **only** through the fusion step that mutates
 the 256-d representation of each channel token. There is no separate
 image-to-prediction path.
 
+### 5.8 Code excerpt: LSTM mode branch
+
+Source: `multimodal_code_index/models/lstm_multimodal.py`
+
+```python
+ch_tokens = self._encode_channel(channel_history)
+
+if self.mode == "channel_only":
+    out = self.head(ch_tokens)
+    out = out.reshape(B, Nsc, P, Na, 2)
+    return out.permute(0, 2, 3, 1, 4).contiguous()
+
+sensor_tokens = torch.cat(sensor_list, dim=1)
+
+fused = ch_tokens
+for block in self.fusion_blocks:
+    fused = block(fused, sensor_tokens)
+
+out = self.head(fused)
+out = out.reshape(B, Nsc, P, Na, 2)
+return out.permute(0, 2, 3, 1, 4).contiguous()
+```
+
+Algorithmically:
+
+- `channel_only` decodes `ch_tokens` directly with `self.head`.
+- `multimodal` first changes `ch_tokens` through image-conditioned fusion, then
+  decodes `fused` with `self.head`.
+- In both cases, `self.head` is where channel values are emitted.
+
 ---
 
 ## 6. Model 2: LWM Multimodal
@@ -560,6 +635,46 @@ Mechanism is identical to LSTM's; only the intermediate width differs (512 vs
 | Heads | `8` |
 | FFN dim | `256` |
 | Adapter dim | `256` |
+
+### 6.4 Code excerpt: LWM channel tokens and mode branch
+
+Source: `multimodal_code_index/models/lwm_multimodal.py`
+
+```python
+# (B, K, Na, Nsc, 2) -> (B*Nsc, K, Na*2)
+x = channel_history.permute(0, 3, 1, 2, 4).reshape(B * Nsc, K, Na * 2)
+x = self.embedding(x)
+for layer in self.layers:
+    x = layer(x)
+last = x[:, -1, :]
+ch_hidden = last.reshape(B, Nsc, self.d_model)
+```
+
+The LWM channel backbone is still per-subcarrier like LSTM, but the temporal
+encoder is a Transformer. It produces `d_model=64` channel hidden tokens, then
+the projection adapter lifts them to the common fusion width:
+
+```python
+ch_hidden = self._encode_channel(channel_history)  # (B, Nsc, 64)
+ch_tokens = self.proj_adapter(ch_hidden)           # (B, Nsc, 256)
+
+if self.mode == "channel_only":
+    out = self.head(ch_tokens)
+    out = out.reshape(B, Nsc, P, Na, 2)
+    return out.permute(0, 2, 3, 1, 4).contiguous()
+
+sensor_tokens = torch.cat(sensor_list, dim=1)
+fused = ch_tokens
+for block in self.fusion_blocks:
+    fused = block(fused, sensor_tokens)
+
+out = self.head(fused)
+```
+
+The algorithm is therefore the same branch pattern as LSTM:
+
+- channel-only: Transformer token -> adapter -> head.
+- multimodal: Transformer token -> adapter -> image fusion -> head.
 
 ---
 
@@ -694,6 +809,66 @@ patch (4×16)         │  + patch tokens (B, T·H·W, 256)│
                        (B, P=4, Na=16, Nsc, 2)
 ```
 
+### 7.6 Code excerpt: masked future reconstruction and CLS injection
+
+Sources:
+- `multimodal_code_index/models/lwm_temporal_multimodal.py`
+- `multimodal_code_index/models/lwm_temporal.py`
+
+LWM-Temporal does not create one token per subcarrier. It appends blank future
+frames, masks those future patch tokens, and asks the sparse transformer to
+reconstruct them:
+
+```python
+x = channel_history.float()
+x_c = torch.complex(x[..., 0], x[..., 1])       # (B, K, Na, Nsc)
+
+future = torch.zeros(B, P, Na, Nsc, dtype=x_c.dtype, device=x_c.device)
+seq = torch.cat([x_c, future], dim=1)           # (B, K+P, Na, Nsc)
+T = K + P
+
+mask = torch.zeros(B, T * self.tokens_per_frame, dtype=torch.bool, device=x.device)
+mask[:, -P * self.tokens_per_frame:] = True
+```
+
+The mode difference is whether a sensor-derived `scene_ctx` is injected into the
+CLS token:
+
+```python
+cls_inject = None
+if self.mode == "multimodal":
+    cls_inject = self._compute_scene_ctx(
+        image_seq, image_valid_mask, lidar_points, lidar_mask, B,
+    )
+
+recon = self.lwm(seq, mask, cls_inject=cls_inject)["reconstruction"]
+pred_tokens = recon[:, -P * self.tokens_per_frame:, :]
+```
+
+Inside `_LWMModelCLSInject`, the image context is added before the sparse
+transformer runs:
+
+```python
+embeddings = self.patch_embed(tokens)
+cls_tokens = self.cls_token.expand(embeddings.size(0), -1, -1)
+if cls_inject is not None:
+    cls_tokens = cls_tokens + cls_inject
+embeddings = torch.cat([embeddings, cls_tokens], dim=1)
+
+embeddings = self._add_positional(embeddings)
+embeddings = embeddings.masked_fill(mask.unsqueeze(-1), 0.0)
+encoded = self.encoder(embeddings, T, H, W, include_cls)
+reconstruction = self.head(encoded[:, :-1, :])
+```
+
+Algorithmically:
+
+- channel-only: future patches are masked and reconstructed without
+  `cls_inject`.
+- multimodal: image tokens are compressed to `scene_ctx`, injected into CLS, and
+  the sparse transformer propagates that context to channel patches.
+- The final `self.head` maps encoded patch tokens back to real/imag patch values.
+
 ---
 
 ## 8. Model 4: Chiron Multimodal
@@ -826,6 +1001,74 @@ ChironBlock × 6                                    │
                             ▼
               prediction (B, P=4, Na=16, Nsc, 2)
 ```
+
+### 8.6 Code excerpt: Chiron patch tokens, fusion, and query head
+
+Sources:
+- `multimodal_code_index/models/chiron_multimodal.py`
+- `multimodal_code_index/models/chiron_channel.py`
+
+Chiron first turns every channel frame into antenna-subcarrier patch tokens and
+keeps the full temporal-spatial token sequence:
+
+```python
+B, K, Na, Nsc, _ = channel_history.shape
+S = self._num_spatial
+
+x = channel_history.reshape(B * K, Na, Nsc, 2)
+tokens = self.patch_embed(x)                    # (B*K, S, D)
+tokens = tokens.view(B, K, S, self.embed_dim)
+
+tokens = tokens + self.temporal_pos[:, :K] + self.spatial_pos
+tokens = tokens.reshape(B, K * S, self.embed_dim)
+
+for block in self.blocks:
+    tokens = block(tokens, K, S)
+
+channel_tokens = self.channel_norm(tokens)      # (B, K*S, D)
+```
+
+The main forward has separate channel-only and multimodal branches:
+
+```python
+if self.mode == "multimodal":
+    channel_tokens = self._encode_channel(channel_history)
+    # Image/LiDAR blocks append tokens and masks to these lists.
+    all_sensor_tokens = torch.cat(sensor_tokens_list, dim=1)
+    all_sensor_masks = torch.cat(sensor_masks_list, dim=1)
+
+    fused = channel_tokens
+    for fusion_block in self.fusion_blocks:
+        fused = fusion_block(
+            fused, all_sensor_tokens,
+            image_key_padding_mask=all_sensor_masks,
+        )
+
+    return self.head(fused)
+
+if self.mode == "channel_only":
+    channel_tokens = self._encode_channel(channel_history)
+    return self.head(channel_tokens)
+```
+
+Unlike LSTM/LWM, Chiron's head uses one learned query per future step. Each query
+cross-attends to the full channel-token sequence, then a shared MLP decodes one
+future channel frame:
+
+```python
+query = self.pool_query.expand(B, -1, -1)      # (B, P, D)
+ctx = self.pool_norm(tokens)
+pooled, _ = self.pool_attn(query, ctx, ctx)    # (B, P, D)
+out = self.mlp(pooled)                         # (B, P, Na*Nsc*2)
+return out.view(B, P, self.num_antennas, self.num_subcarriers, 2)
+```
+
+Algorithmically:
+
+- channel-only: Chiron channel tokens -> future-step query head.
+- multimodal: Chiron channel tokens -> image-sequence tokens -> gated
+  cross-modal fusion -> future-step query head.
+- Prediction is emitted by `ChannelPredictionHead`, not by the Chiron blocks.
 
 ---
 
