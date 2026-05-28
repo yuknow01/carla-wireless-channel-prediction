@@ -333,6 +333,9 @@ ch_tokens = last.reshape(B, Nsc, 256)
 ```
 
 `nn.LSTM` emits a hidden state for **each of the 16 timesteps**:
+<img width="2816" height="1536" alt="AdobeExpressPhotos_8b87fe4e10fa4835bc0b403983a6e4db_CopyEdited" src="https://github.com/user-attachments/assets/fb5f62a4-f5df-4bfb-bd91-24340f852c55" />
+
+
 
 ```text
 t=0      t=1      t=2     ...    t=14    t=15
