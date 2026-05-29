@@ -54,9 +54,9 @@ metric.
 
 ![Train and validation NMSE curves](docs/images/results/sc01_sc04_train_val_nmse_curves.png)
 
-### Train and Validation Loss Curves
+### Train and Validation Loss Curves (Epochs 1-20)
 
-![Train and validation loss curves](docs/images/results/sc01_sc04_train_val_loss_curves.png)
+![Train and validation loss curves through epoch 20](docs/images/results/sc01_sc04_train_val_loss_curves.png)
 
 ### Train-Validation Generalization Gap
 
