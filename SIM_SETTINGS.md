@@ -100,7 +100,6 @@ CW_RADIO_PROFILE=fr2_28ghz python collect_final.py
 
 ![All scenario city structure and UE trajectories](./docs/images/scenarios/all_scenario_city_structure_map.png)
 
-![Scenario city structure trajectory example](./docs/images/scenarios/city_structure_trajectory_sc01.png)
 
 The first figure shows the combined Sionna OBJ city structure and UE trajectories
 for `sc01` to `sc08`. The second figure is the scenario-level city-structure
