@@ -58,6 +58,10 @@ metric.
 
 ![Train and validation loss curves through epoch 20](docs/images/results/sc01_sc04_train_val_loss_curves.png)
 
+### Validation Loss Curves (Epochs 1-20)
+
+![Validation loss curves through epoch 20](docs/images/results/sc01_sc04_validation_loss_curves.png)
+
 ### Train-Validation Generalization Gap
 
 ![Validation NMSE minus train NMSE at the best validation epoch](docs/images/results/sc01_sc04_generalization_gap.png)
