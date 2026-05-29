@@ -68,6 +68,7 @@ def model_args(args: argparse.Namespace) -> Namespace:
         num_subcarriers=args.num_subcarriers,
         history_len=args.history_len,
         prediction_horizon=args.prediction_horizon,
+        delta_t=0.0005,
         no_pretrained_image=not args.pretrained_image,
         embed_dim=256,
         fusion_layers=3,
@@ -115,12 +116,14 @@ def main() -> None:
     channel_history = batch["channel_history"].to(device)
     target = batch["target"].to(device)
     image_seq = batch["image_seq"].to(device) if use_image else None
+    image_time_offsets = batch["image_time_offsets"].to(device) if use_image else None
     image_valid_mask = batch["image_valid_mask"].to(device) if use_image else None
 
     with torch.no_grad():
         pred = model(
             channel_history=channel_history,
             image_seq=image_seq,
+            image_time_offsets=image_time_offsets,
             image_valid_mask=image_valid_mask,
         )
         loss = F.mse_loss(pred, target)

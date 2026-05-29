@@ -5,12 +5,20 @@ This folder is the experiment entrypoint for the current
 
 Default task:
 
-- input: `K=16` past channel frames plus RGB image history
+- input: `K=16` past channel frames plus RGB image history in multimodal mode
 - target: `P=4` consecutive future channel frames
 - prediction: one forward pass returns `(B, 4, 16, Nsc, 2)`
 - default `Nsc=64`, selected from the current 512-subcarrier dataset for Task04 compatibility
 - current modalities: `channel + RGB image`
 - currently not used by this runner: LiDAR, Radar
+
+Current LSTM/LWM architecture note:
+
+- `lstm` and `lwm` now use wideband time tokens: `(B, K, Na*Nsc*2) -> (B, K, D)`.
+- Their RGB path summarizes each frame, aligns RGB tokens to the channel-history
+  time grid with `image_time_offsets`, then fuses `[channel_t, rgb_t]` with
+  per-time modality attention.
+- `lwm_temporal` and `chiron` keep their existing wideband/patch-time designs.
 
 ## Current Defaults
 
@@ -55,8 +63,8 @@ Model-specific defaults:
 
 | Model | Main channel stack |
 |---|---|
-| `lstm` | per-subcarrier LSTM, `3` layers, hidden dim `256` |
-| `lwm` | per-subcarrier Transformer, `12` layers, `8` heads, `d_model=64`, `d_ff=256` |
+| `lstm` | wideband-time LSTM, `3` layers, hidden dim `256`, tokens `(B,K,256)` |
+| `lwm` | wideband-time Transformer, `12` layers, `8` heads, `d_model=64`, adapter to `256` |
 | `lwm_temporal` | sparse spatio-temporal LWM, depth `6`, `8` heads, patch `(4,16)` |
 | `chiron` | CHIRON blocks, depth `6`, `4` heads, patch `(4,32)`, conv kernel `7` |
 
@@ -152,6 +160,25 @@ python multimodal_code_index/run_multimodal_16to4/run_16to4.py \
   --amp
 ```
 
+Minimum rerun after the LSTM/LWM wideband-time update:
+
+```bash
+python multimodal_code_index/run_multimodal_16to4/run_16to4.py \
+  --mode channel_only --model lstm --batch-size 4 --amp
+
+python multimodal_code_index/run_multimodal_16to4/run_16to4.py \
+  --mode channel_only --model lwm --batch-size 4 --amp
+
+python multimodal_code_index/run_multimodal_16to4/run_16to4.py \
+  --mode multimodal --model lstm --batch-size 4 --amp
+
+python multimodal_code_index/run_multimodal_16to4/run_16to4.py \
+  --mode multimodal --model lwm --batch-size 4 --amp
+```
+
+For a fully uniform comparison table, rerun all multimodal models with the same
+dataset split, seed, batch size, and epoch budget.
+
 Use all 512 subcarriers:
 
 ```bash
@@ -245,6 +272,7 @@ Returned sample fields:
 channel_history: (K, Na, Nsc, 2)
 target:          (P, Na, Nsc, 2)
 image_seq:       (T_img, 3, 224, 224)
+image_time_offsets:(T_img, 1)
 image_valid_mask:(T_img,)
 sample_index:    scalar t
 ```
@@ -307,7 +335,7 @@ Common helper files:
   - ResNet18 image token encoder.
 
 - `multimodal_code_index/models/fusion_blocks.py`
-  - Gated cross-modal fusion blocks.
+  - Gated cross-modal fusion blocks, frame summarizer, and per-time modality fusion.
 
 - `multimodal_code_index/models/sensor_encoders.py`
   - Re-export module used by several multimodal models.

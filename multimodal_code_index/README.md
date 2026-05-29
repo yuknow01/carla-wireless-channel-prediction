@@ -124,6 +124,26 @@ bash /mnt/ssd_7t_2/carla-wireless-dataset/experiment_dual_root/scripts/train_one
 즉, 지금 바로 재측정 가능한 멀티모달은 `channel + RGB image`입니다.
 LiDAR/Radar까지 포함하려면 데이터 로더, batch 이동, model build 인자를 별도로 확장해야 합니다.
 
+## 현재 LSTM/LWM 구조
+
+`lstm`, `lwm`은 기존 per-subcarrier token 구조가 아니라 wideband time
+token 구조입니다.
+
+```text
+channel_history: (B, K, Na, Nsc, 2)
+  -> (B, K, Na*Nsc*2)
+  -> channel encoder
+  -> (B, K, D)
+```
+
+멀티모달 모드에서는 RGB frame을 frame token으로 요약한 뒤
+`image_time_offsets`와 `delta_t`로 channel history의 K개 time step에 맞춰
+정렬하고, 각 시간마다 `[channel_t, rgb_t]`를 attention으로 fusion합니다.
+
+이 변경 때문에 `lstm`, `lwm`의 기존 checkpoint와 결과는 새 구조와 직접
+비교하지 않는 것이 안전합니다. 최소 재실험 대상은 `lstm`, `lwm`의
+`channel_only`와 `multimodal`입니다.
+
 ## 모델 명칭 정리
 
 - 보고서/발표에서는 `lwm`보다 `Transformer encoder`로 표기하는 것이 좋음

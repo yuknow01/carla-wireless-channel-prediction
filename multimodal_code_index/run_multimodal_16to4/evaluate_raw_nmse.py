@@ -228,14 +228,17 @@ def evaluate_checkpoint(path: Path, args: argparse.Namespace) -> dict:
         channel_history = batch["channel_history"].to(device)
         target = batch["target"].to(device)
         image_seq = None
+        image_time_offsets = None
         image_valid_mask = None
         if getattr(train_args, "mode", "channel_only") != "channel_only":
             image_seq = batch["image_seq"].to(device)
+            image_time_offsets = batch["image_time_offsets"].to(device)
             image_valid_mask = batch["image_valid_mask"].to(device)
 
         pred = model(
             channel_history=channel_history,
             image_seq=image_seq,
+            image_time_offsets=image_time_offsets,
             image_valid_mask=image_valid_mask,
         )
 

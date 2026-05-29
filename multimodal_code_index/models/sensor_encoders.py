@@ -11,9 +11,15 @@ Classes
 ImageTokenEncoder     : ResNet18 frozen backbone → (B, 49, D)
 PointNetEncoder       : PointNet-style attention pool → (B, 16, D)
 GatedCrossModalFusion : Gated cross-attention fusion block
+SensorFrameSummarizer : frame patch tokens → one token per frame
+PerTimeModalityFusion : per-time channel/sensor modality attention
 """
 
-from models.fusion_blocks import GatedCrossModalFusion
+from models.fusion_blocks import (
+    GatedCrossModalFusion,
+    PerTimeModalityFusion,
+    SensorFrameSummarizer,
+)
 from models.image_encoders import ImageTokenEncoder
 from models.lidar_encoders import PointNetEncoder
 
@@ -21,4 +27,6 @@ __all__ = [
     "ImageTokenEncoder",
     "PointNetEncoder",
     "GatedCrossModalFusion",
+    "SensorFrameSummarizer",
+    "PerTimeModalityFusion",
 ]

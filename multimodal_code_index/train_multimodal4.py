@@ -220,6 +220,7 @@ def build_model(model_name: str, args: argparse.Namespace) -> nn.Module:
         pretrained_image=pretrained_image,
         fusion_layers=args.fusion_layers,
         fusion_heads=args.fusion_heads,
+        delta_t=args.delta_t,
     )
 
     if model_name == "lstm":
@@ -325,12 +326,14 @@ def move_batch(batch: dict, device: torch.device, args: argparse.Namespace) -> t
     target = batch["target"].to(device, non_blocking=True)
 
     image_seq = None
+    image_time_offsets = None
     image_valid_mask = None
     if args.mode != "channel_only":
         image_seq = batch["image_seq"].to(device, non_blocking=True)
+        image_time_offsets = batch["image_time_offsets"].to(device, non_blocking=True)
         image_valid_mask = batch["image_valid_mask"].to(device, non_blocking=True)
 
-    return channel_history, target, image_seq, image_valid_mask
+    return channel_history, target, image_seq, image_time_offsets, image_valid_mask
 
 
 def run_epoch(
@@ -355,7 +358,9 @@ def run_epoch(
     last_log_step = 0
 
     for step, batch in enumerate(loader, start=1):
-        channel_history, target, image_seq, image_valid_mask = move_batch(batch, device, args)
+        channel_history, target, image_seq, image_time_offsets, image_valid_mask = move_batch(
+            batch, device, args
+        )
 
         with torch.set_grad_enabled(train):
             amp_enabled = args.amp and device.type == "cuda"
@@ -364,6 +369,7 @@ def run_epoch(
                 pred = model(
                     channel_history=channel_history,
                     image_seq=image_seq,
+                    image_time_offsets=image_time_offsets,
                     image_valid_mask=image_valid_mask,
                 )
                 loss = criterion(pred, target)

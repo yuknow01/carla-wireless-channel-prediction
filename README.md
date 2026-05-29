@@ -4,7 +4,8 @@ This repository contains a CARLA-to-Sionna data generation pipeline and channel
 prediction models for multimodal wireless channel forecasting.
 
 The current active experiment predicts `P=4` future channel frames from `K=16`
-past channel frames and, in multimodal mode, the latest-past RGB image sequence.
+past channel frames and, in multimodal mode, a time-aligned latest-past RGB
+image sequence.
 Training commands and smoke checks are documented in [EXPERIMENTS.md](EXPERIMENTS.md).
 
 ## Project Map
@@ -38,6 +39,14 @@ PyTorch training
   -> channel-only or channel+RGB prediction
   -> LSTM / LWM / LWM-Temporal / Chiron comparison
 ```
+
+Current LSTM/LWM note:
+
+- `lstm` and `lwm` use wideband time tokens, not per-subcarrier tokens:
+  `(B, K, Na, Nsc, 2) -> (B, K, D)`.
+- In multimodal mode, RGB frames are summarized per frame, aligned to the
+  channel-history time grid with `image_time_offsets`, and fused per time step.
+- `lwm_temporal` and `chiron` keep their existing wideband/patch-time designs.
 
 ## Active Dataset Convention
 
