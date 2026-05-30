@@ -373,6 +373,11 @@ def run_epoch(
                     image_valid_mask=image_valid_mask,
                 )
                 loss = criterion(pred, target)
+                if not torch.isfinite(loss):
+                    raise FloatingPointError(
+                        f"Non-finite loss for model={model_name} "
+                        f"epoch={epoch} step={step}: {float(loss.detach().cpu())}"
+                    )
 
             if train:
                 optimizer.zero_grad(set_to_none=True)
