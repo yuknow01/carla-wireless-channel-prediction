@@ -177,6 +177,189 @@ channel_0    channel_1               channel_K-1
 rgb_0        rgb_1                   rgb_K-1
 ```
 
+### LSTM/LWM Multimodal Shape Embedding View
+
+The diagrams below omit the batch dimension `B` and use the default current
+runner sizes: `K=16`, `T_img=8`, `Na=16`, `Nsc=64`, and `D=256`.
+
+Channel input before embedding:
+
+```text
+                              time ->
+              t0        t1        t2       ...      t15
+           +--------+--------+--------+--------+--------+
+sc0        | Na x 2 | Na x 2 | Na x 2 |  ...   | Na x 2 |
+sc1        | Na x 2 | Na x 2 | Na x 2 |  ...   | Na x 2 |
+sc2        | Na x 2 | Na x 2 | Na x 2 |  ...   | Na x 2 |
+...        |  ...   |  ...   |  ...   |  ...   |  ...   |
+sc63       | Na x 2 | Na x 2 | Na x 2 |  ...   | Na x 2 |
+           +--------+--------+--------+--------+--------+
+
+Each cell: (Na, 2) = (16, 2)
+Full sample shape: (K, Na, Nsc, 2) = (16, 16, 64, 2)
+```
+
+LSTM/LWM fold each time column into one wideband vector:
+
+```text
+t0 column                    t1 column                    ...   t15 column
+
++---------------+            +---------------+                  +---------------+
+| sc0:  Na x 2  |            | sc0:  Na x 2  |                  | sc0:  Na x 2  |
+| sc1:  Na x 2  |            | sc1:  Na x 2  |                  | sc1:  Na x 2  |
+| ...           |            | ...           |                  | ...           |
+| sc63: Na x 2  |            | sc63: Na x 2  |                  | sc63: Na x 2  |
++---------------+            +---------------+                  +---------------+
+       |                            |                                  |
+       v                            v                                  v
+   x_t0: 2048                  x_t1: 2048                         x_t15: 2048
+```
+
+Channel token sequence:
+
+```text
++--------+--------+--------+--------+--------+
+| x_t0   | x_t1   | x_t2   |  ...   | x_t15  |
+| 2048   | 2048   | 2048   |        | 2048   |
++--------+--------+--------+--------+--------+
+
+shape: (K, Na*Nsc*2) = (16, 2048)
+
+LSTM/LWM encoder output:
+
++--------+--------+--------+--------+--------+
+| c_t0   | c_t1   | c_t2   |  ...   | c_t15  |
+| 256    | 256    | 256    |        | 256    |
++--------+--------+--------+--------+--------+
+
+shape: (K, D) = (16, 256)
+```
+
+Image input and image embedding:
+
+```text
+image_seq:
+
++------------+------------+------------+--------+------------+
+| img0       | img1       | img2       |  ...   | img7       |
+| 3x224x224  | 3x224x224  | 3x224x224  |        | 3x224x224  |
++------------+------------+------------+--------+------------+
+
+shape: (T_img, 3, 224, 224) = (8, 3, 224, 224)
+
+after ResNet18 token encoder, each frame becomes a 7x7 token grid:
+
++-----+-----+-----+-----+-----+-----+-----+
+| 256 | 256 | 256 | 256 | 256 | 256 | 256 |
++-----+-----+-----+-----+-----+-----+-----+
+| 256 | 256 | 256 | 256 | 256 | 256 | 256 |
++-----+-----+-----+-----+-----+-----+-----+
+| ... | ... | ... | ... | ... | ... | ... |
++-----+-----+-----+-----+-----+-----+-----+
+
+shape per frame: (49, 256)
+shape for 8 frames: (T_img, 49, D) = (8, 49, 256)
+```
+
+The frame summarizer compresses each image frame to one RGB token, then time
+alignment maps `T_img=8` frame tokens onto the `K=16` channel time grid:
+
+```text
+img0 49 tokens -> r_img0: 256
+img1 49 tokens -> r_img1: 256
+...
+img7 49 tokens -> r_img7: 256
+
+frame_tokens shape: (T_img, D) = (8, 256)
+
+after image_time_offsets alignment:
+
++--------+--------+--------+--------+--------+
+| r_t0   | r_t1   | r_t2   |  ...   | r_t15  |
+| 256    | 256    | 256    |        | 256    |
++--------+--------+--------+--------+--------+
+
+rgb_tokens shape: (K, D) = (16, 256)
+```
+
+Fusion sees a two-row modality grid at every channel-history time step:
+
+```text
+              t0        t1        t2       ...      t15
+          +--------+--------+--------+--------+--------+
+channel   | c_t0   | c_t1   | c_t2   |  ...   | c_t15  |
+          | 256    | 256    | 256    |        | 256    |
+          +--------+--------+--------+--------+--------+
+RGB       | r_t0   | r_t1   | r_t2   |  ...   | r_t15  |
+          | 256    | 256    | 256    |        | 256    |
+          +--------+--------+--------+--------+--------+
+
+shape before fusion: (K, M, D) = (16, 2, 256)
+M = 2 modalities: channel and RGB
+```
+
+At each time step, `PerTimeModalityFusion` attends over the modality axis:
+
+```text
+for t0:
+
++------------+
+| c_t0: 256  |
++------------+    attention over M=2 modalities
+| r_t0: 256  |  --------------------------------->  f_t0: 256
++------------+
+
+shape: (M, D) = (2, 256) -> (D) = (256)
+```
+
+The fused sequence keeps the same time grid:
+
+```text
++--------+--------+--------+--------+--------+
+| f_t0   | f_t1   | f_t2   |  ...   | f_t15  |
+| 256    | 256    | 256    |        | 256    |
++--------+--------+--------+--------+--------+
+
+fused_tokens shape: (K, D) = (16, 256)
+```
+
+The prediction head uses `P=4` future queries to read the `K=16` fused tokens:
+
+```text
+future queries:
+
++--------+--------+--------+--------+
+| q_0    | q_1    | q_2    | q_3    |
+| 256    | 256    | 256    | 256    |
++--------+--------+--------+--------+
+        |
+        | attend to fused_tokens (16, 256)
+        v
+
++------------+------------+------------+------------+
+| frame+1    | frame+2    | frame+3    | frame+4    |
+| 16x64x2    | 16x64x2    | 16x64x2    | 16x64x2    |
++------------+------------+------------+------------+
+
+prediction shape: (P, Na, Nsc, 2) = (4, 16, 64, 2)
+```
+
+Compressed shape summary:
+
+```text
+Channel:
+  (K, Na, Nsc, 2) -> (K, 2048) -> (K, 256)
+
+Image:
+  (T_img, 3, 224, 224) -> (T_img, 49, 256) -> (T_img, 256) -> (K, 256)
+
+Fusion:
+  channel (K, 256) + RGB (K, 256) -> (K, 2, 256) -> (K, 256)
+
+Prediction:
+  (K, 256) -> (P, Na, Nsc, 2)
+```
+
 ## 6. Per-Time Modality Fusion for LSTM/LWM
 
 Source: `multimodal_code_index/models/fusion_blocks.py`
