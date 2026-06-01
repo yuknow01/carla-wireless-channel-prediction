@@ -42,6 +42,57 @@ current LSTM/LWM:
   one token per time step, each token sees all antennas and subcarriers
 ```
 
+### LSTM/LWM Channel-Only Embedding View (t x subcarrier)
+
+For the LSTM/LWM channel-only path, the channel history can be drawn as a
+time-subcarrier grid. The x-axis is time `t`; the y-axis is subcarrier. Each
+cell still contains the full BS antenna vector and complex components `(Na, 2)`.
+
+```text
+                         time t ->
+
+subcarrier       t0             t1             ...            tK-1
+    sc0       H[t0, sc0]     H[t1, sc0]                    H[tK-1, sc0]
+    sc1       H[t0, sc1]     H[t1, sc1]                    H[tK-1, sc1]
+    sc2       H[t0, sc2]     H[t1, sc2]                    H[tK-1, sc2]
+    ...           ...            ...           ...              ...
+ scNsc-1   H[t0, scNsc-1] H[t1, scNsc-1]              H[tK-1, scNsc-1]
+
+For one sample, each cell H[tk, scj] = complex channel over all Na antennas:
+(Na, 2)
+```
+
+The current LSTM/LWM channel-only embedding is 1D along the time axis. For each
+time column, all antenna, subcarrier, real, and imaginary values are flattened
+into one wideband vector:
+
+```text
+one time column tk:
+  H_sample[tk, :, :, :]    -> (Na, Nsc, 2)
+  flatten antenna/subcarrier/complex axes
+  x_tk                    -> (Na * Nsc * 2)
+
+all history columns:
+  [x_t0, x_t1, ..., x_tK-1] -> 1D temporal sequence
+```
+
+Then each model turns that 1D sequence into channel tokens:
+
+```text
+LSTM:
+  x_t sequence -> LSTM over time -> channel_tokens (B, K, 256)
+
+LWM:
+  x_t sequence
+    -> Linear(Na*Nsc*2 -> 64) + time position embedding
+    -> Transformer over time
+    -> Linear(64 -> 256) + LayerNorm
+    -> channel_tokens (B, K, 256)
+```
+
+So, in the current LSTM/LWM channel-only setting, the subcarrier axis is not a
+separate token axis. It is folded into the feature dimension of each time token.
+
 ## 3. LSTM Channel Path
 
 Source: `multimodal_code_index/models/lstm_multimodal.py`
