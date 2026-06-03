@@ -142,6 +142,113 @@ LWM:
 So, in the current LSTM/LWM channel-only setting, the subcarrier axis is not a
 separate token axis. It is folded into the feature dimension of each time token.
 
+### Previous Per-Subcarrier Embedding Reference (Archived)
+
+This subsection preserves only the embedding view from the previous LSTM/LWM
+multimodal structure. It is kept for comparison, but it is **not** the active
+LSTM/LWM runner path after the wideband-time update.
+
+Previous LSTM/LWM channel embedding used one token per subcarrier:
+
+```text
+channel_history: (B, K, Na, Nsc, 2)
+  -> permute(0, 3, 1, 2, 4)
+  -> (B, Nsc, K, Na, 2)
+  -> reshape(B*Nsc, K, Na*2)
+
+default:
+  (B, 16, 16, 64, 2)
+  -> (B, 64, 16, 16, 2)
+  -> (B*64, 16, 32)
+```
+
+Embedding view:
+
+```text
+For each subcarrier sc_j:
+
+              time ->
+          t0       t1       t2      ...     t15
+       +-------+--------+--------+-------+--------+
+sc_j   | Na*2  | Na*2   | Na*2   | ...   | Na*2   |
+       | 32    | 32     | 32     |       | 32     |
+       +-------+--------+--------+-------+--------+
+           |
+           v
+       temporal encoder shared by all subcarriers
+       LSTM or LWM Transformer over K=16
+           |
+           v
+       one channel token for this subcarrier: (256)
+
+All subcarriers:
+  sc0 token, sc1 token, ..., sc63 token
+  -> channel_tokens: (B, Nsc, 256) = (B, 64, 256)
+```
+
+The previous LSTM kept only the last temporal hidden state for each subcarrier:
+
+<img width="2816" height="1536" alt="Previous per-subcarrier LSTM embedding" src="https://github.com/user-attachments/assets/fb5f62a4-f5df-4bfb-bd91-24340f852c55" />
+
+```text
+t=0      t=1      t=2     ...    t=14    t=15
+  x        x        x                x       x       input per SC: 32-d
+  |        |        |                |       |
+  v        v        v                v       v
+[h0] ->  [h1] ->  [h2] ->  ...  -> [h14] -> [h15]   hidden: 256-d each
+                                             |
+                                             v
+                                      keep last hidden only
+                                      channel_token[sc_j]: 256-d
+```
+
+Previous LWM used the same per-subcarrier unfold, but replaced the LSTM with a
+Transformer:
+
+```text
+(B*Nsc, K, Na*2)
+  -> Linear(32 -> 64) + learned position embedding
+  -> Transformer over K
+  -> last token
+  -> reshape(B, Nsc, 64)
+  -> Linear(64 -> 256) + LayerNorm
+  -> channel_tokens: (B, Nsc, 256)
+```
+
+The previous image embedding was the same ResNet18 spatial-token idea:
+
+```text
+image_seq: (B, T_img, 3, 224, 224)
+  -> flatten frames: (B*T_img, 3, 224, 224)
+  -> ImageTokenEncoder
+  -> (B*T_img, 49, 256)
+  -> reshape
+  -> image_tokens: (B, T_img*49, 256)
+
+default T_img=8:
+  image_tokens: (B, 392, 256)
+```
+
+Previous fusion then used channel tokens as queries and image tokens as
+keys/values:
+
+```text
+channel_tokens: (B, Nsc=64, 256)      Q
+image_tokens:   (B, T_img*49=392, 256) K/V
+  -> GatedCrossModalFusion
+  -> fused_channel_tokens: (B, Nsc=64, 256)
+```
+
+Current LSTM/LWM differs in the channel side:
+
+```text
+previous:
+  one token per subcarrier -> (B, Nsc, 256)
+
+current:
+  one token per time step  -> (B, K, 256)
+```
+
 ## 4. LSTM Channel Path
 
 Source: `multimodal_code_index/models/lstm_multimodal.py`
