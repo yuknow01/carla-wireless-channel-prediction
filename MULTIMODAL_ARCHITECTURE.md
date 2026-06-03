@@ -598,6 +598,134 @@ It appends masked future channel frames and processes time plus
 antenna-subcarrier patches jointly. Image information is summarized into a
 scene context and injected through the LWM temporal model's CLS path.
 
+Current default shape flow:
+
+```text
+channel_history
+(B, K=16, Na=16, Nsc=64, 2)
+        |
+        | real/imag -> complex
+        v
+complex channel history
+(B, 16, 16, 64)
+        |
+        | append P=4 blank future frames
+        v
+channel sequence with masked future
+(B, T=K+P=20, 16, 64)
+        |
+        | patchify antenna/subcarrier with patch=(4,16)
+        | H = 16/4 = 4, W = 64/16 = 4, S = 16 patches/frame
+        v
+patch tokens before embedding
+(B, T*S=320, patch_dim=4*16*2=128)
+        |
+        | Linear(128 -> 256) + learned position embedding
+        v
+patch embeddings
+(B, 320, 256)
+```
+
+The image path is compressed into one scene token:
+
+```text
+image_seq
+(B, T_img=8, 3, 224, 224)
+        |
+        | ImageTokenEncoder per frame
+        v
+image tokens
+(B, T_img*49=392, 256)
+        |
+        | scene_query cross-attends to image tokens
+        v
+scene_ctx
+(B, 1, 256)
+```
+
+The scene context is injected into the CLS token before sparse LWM encoding:
+
+```text
+patch embeddings                    scene_ctx
+(B, 320, 256)                       (B, 1, 256)
+        |                                  |
+        |                                  v
+        |                         cls_token + scene_ctx
+        |                            (B, 1, 256)
+        |                                  |
+        +----------------+-----------------+
+                         v
+patch + CLS sequence
+(B, 321, 256)
+        |
+        | Sparse spatio-temporal LWM encoder, depth=6
+        | future patch positions are masked
+        v
+reconstructed patch values
+(B, 320, 128)
+        |
+        | take last P*S = 4*16 = 64 future tokens
+        v
+future patch tokens
+(B, 64, 128)
+        |
+        | unpatchify
+        v
+prediction
+(B, P=4, Na=16, Nsc=64, 2)
+```
+
+Architecture view:
+
+```text
+                         image_seq (B,8,3,224,224)
+                                   |
+                                   v
+                         ImageTokenEncoder
+                                   |
+                                   v
+                         image_tokens (B,392,256)
+                                   |
+                                   v
+                         scene_query attention
+                                   |
+                                   v
+                         scene_ctx (B,1,256)
+                                   |
+                                   v
+channel_history             cls_token + scene_ctx
+(B,16,16,64,2)                       |
+        |                            |
+        v                            |
+append P blank future                |
+(B,20,16,64)                         |
+        |                            |
+        v                            |
+patchify (4,16)                      |
+(B,320,128)                          |
+        |                            |
+        v                            |
+Linear 128 -> 256                    |
+(B,320,256)                          |
+        |                            |
+        +-------------+--------------+
+                      v
+             patch tokens + CLS
+                (B,321,256)
+                      |
+                      v
+       Sparse Spatio-Temporal LWM encoder
+                      |
+                      v
+        reconstruction (B,320,128)
+                      |
+                      v
+          future patches (B,64,128)
+                      |
+                      v
+          prediction (B,4,16,64,2)
+```
+
 ### Chiron
 
 Sources:
@@ -609,6 +737,115 @@ Chiron converts every channel frame into antenna-subcarrier patch tokens,
 processes them with temporal and spatial Chiron blocks, and decodes future
 frames through `ChannelPredictionHead`. In multimodal mode, Chiron keeps its
 existing image-sequence encoder and gated cross-modal fusion path.
+
+Current default shape flow:
+
+```text
+channel_history
+(B, K=16, Na=16, Nsc=64, 2)
+        |
+        | per-frame patch embedding with patch=(4,32)
+        | H = 16/4 = 4, W = 64/32 = 2, S = 8 patches/frame
+        v
+patch tokens per frame
+(B*K, S=8, 256)
+        |
+        | reshape and add temporal/spatial position embeddings
+        v
+channel patch sequence
+(B, K*S=128, 256)
+        |
+        | ChironBlock x 6
+        |   TemporalBlock over K
+        |   SpatialBlock over S
+        |   GatedFFN
+        v
+channel_tokens
+(B, 128, 256)
+```
+
+The Chiron image path keeps a full image-token sequence:
+
+```text
+image_seq
+(B, T_img=8, 3, 224, 224)
+        |
+        | ResNet18 ImageTokenEncoder
+        v
+frame spatial tokens
+(B, 8, 49, 256)
+        |
+        | ImageSequenceEncoder
+        |   add frame position
+        |   temporal attention over frame summaries
+        |   inject frame context back into spatial tokens
+        v
+image_tokens
+(B, T_img*49=392, 256)
+```
+
+Fusion and prediction:
+
+```text
+channel_tokens                         image_tokens
+(B, 128, 256)                          (B, 392, 256)
+        |                                    |
+        | Q                                  | K/V
+        +----------------+-------------------+
+                         v
+             GatedCrossModalFusion x 3
+                         |
+                         v
+              fused channel tokens
+                 (B, 128, 256)
+                         |
+                         | P=4 future queries attend to all 128 tokens
+                         v
+              ChannelPredictionHead
+                         |
+                         v
+              prediction
+              (B, 4, 16, 64, 2)
+```
+
+Architecture view:
+
+```text
+channel_history (B,16,16,64,2)              image_seq (B,8,3,224,224)
+        |                                                   |
+        v                                                   v
+PatchEmbed2D patch=(4,32)                         ResNet18 ImageTokenEncoder
+        |                                                   |
+        v                                                   v
+(B*16,8,256)                                  frame tokens (B,8,49,256)
+        |                                                   |
+        v                                                   v
+reshape + temporal/spatial pos                 ImageSequenceEncoder
+        |                                      temporal frame context
+        v                                                   |
+channel patch tokens                                        v
+(B,128,256)                                      image_tokens (B,392,256)
+        |                                                   |
+        v                                                   |
+ChironBlock x 6                                            |
+        |                                                   |
+        v                                                   |
+channel_tokens (B,128,256)                                  |
+        |                                                   |
+        +------------------ Q attends to K/V ----------------+
+                             |
+                             v
+                   GatedCrossModalFusion x 3
+                             |
+                             v
+                   fused_tokens (B,128,256)
+                             |
+                             v
+                   ChannelPredictionHead
+                             |
+                             v
+                   prediction (B,4,16,64,2)
+```
 
 ## 11. Experiment Implications
 
