@@ -20,7 +20,56 @@ prediction      : (B, P=4, Na=16, Nsc, 2)
 but `train_multimodal4.py` builds the active experiments with `use_lidar=False`.
 Radar is not used by the active runner.
 
-## 2. Current Model Families
+## 2. High-Level Architecture Image
+
+The original high-level multimodal architecture image is kept here for quick
+visual reference:
+
+<img width="1024" height="559" alt="Multimodal architecture overview" src="https://github.com/user-attachments/assets/a01869f2-35e9-43ef-a4a0-05a6a98126ef" />
+
+The current LSTM/LWM implementation differs from the old per-subcarrier version:
+it uses wideband time tokens and fuses RGB per channel-history time step.
+
+Current code checkpoints:
+
+```python
+# multimodal_code_index/train_multimodal4.py
+use_image = args.mode == "multimodal"
+common = dict(
+    mode=args.mode,
+    num_bs_antennas=args.num_bs_antennas,
+    num_subcarriers=args.num_subcarriers,
+    history_len=args.history_len,
+    prediction_horizon=args.prediction_horizon,
+    embed_dim=args.embed_dim,
+    use_image=use_image,
+    use_lidar=False,
+)
+```
+
+```python
+# multimodal_code_index/models/lstm_multimodal.py
+B, K, Na, Nsc, _ = channel_history.shape
+x = channel_history.reshape(B, K, Na * Nsc * 2)
+output, _ = self.lstm(x)
+ch_tokens = self.channel_proj(output)  # (B, K, embed_dim)
+```
+
+```python
+# multimodal_code_index/models/lwm_multimodal.py
+B, K, Na, Nsc, _ = channel_history.shape
+x = channel_history.reshape(B, K, Na * Nsc * 2)
+x = self.embedding(x)
+for layer in self.layers:
+    x = layer(x)
+ch_tokens = self.proj_adapter(x)  # (B, K, embed_dim)
+```
+
+The older LSTM image/code block that described "last hidden only" per-subcarrier
+processing is not restored in the main path because it no longer matches the
+current active LSTM/LWM implementation.
+
+## 3. Current Model Families
 
 | Model | Channel representation | Multimodal fusion | Changed in current update |
 |---|---|---|---|
@@ -93,7 +142,7 @@ LWM:
 So, in the current LSTM/LWM channel-only setting, the subcarrier axis is not a
 separate token axis. It is folded into the feature dimension of each time token.
 
-## 3. LSTM Channel Path
+## 4. LSTM Channel Path
 
 Source: `multimodal_code_index/models/lstm_multimodal.py`
 
@@ -116,7 +165,7 @@ channel_tokens (B, K, 256)
   -> prediction (B, P, Na, Nsc, 2)
 ```
 
-## 4. LWM Channel Path
+## 5. LWM Channel Path
 
 Source: `multimodal_code_index/models/lwm_multimodal.py`
 
@@ -133,7 +182,7 @@ channel_history: (B, K, Na, Nsc, 2)
 The LWM model is also wideband-time now. It uses the same prediction head as
 LSTM after the projection adapter.
 
-## 5. RGB Sensor Path for LSTM/LWM
+## 6. RGB Sensor Path for LSTM/LWM
 
 Sources:
 
@@ -360,7 +409,7 @@ Prediction:
   (K, 256) -> (P, Na, Nsc, 2)
 ```
 
-## 6. Per-Time Modality Fusion for LSTM/LWM
+## 7. Per-Time Modality Fusion for LSTM/LWM
 
 Source: `multimodal_code_index/models/fusion_blocks.py`
 
@@ -382,7 +431,7 @@ output: (B, K, D)
 With multiple sensor modalities, the same block can consume
 `sensor_tokens: (B, K, M, D)`. The current runner only passes RGB.
 
-## 7. Prediction Head
+## 8. Prediction Head
 
 LSTM and LWM now use `ChannelPredictionHead` from
 `multimodal_code_index/models/chiron_channel.py`.
@@ -397,7 +446,7 @@ fused/channel tokens: (B, K, 256)
 The physical channel values are emitted only by the prediction head. The
 channel encoder, RGB encoder, and fusion blocks produce abstract features.
 
-## 8. End-to-End Flow for Current LSTM/LWM Multimodal
+## 9. End-to-End Flow for Current LSTM/LWM Multimodal
 
 ```text
 channel_history (B,K,Na,Nsc,2)
@@ -426,7 +475,7 @@ fused_tokens (B,K,256)
 prediction (B,P,Na,Nsc,2)
 ```
 
-## 9. LWM-Temporal and Chiron
+## 10. LWM-Temporal and Chiron
 
 `lwm_temporal` and `chiron` were already wideband/patch-time models and were not
 rewritten in this update.
@@ -454,7 +503,7 @@ processes them with temporal and spatial Chiron blocks, and decodes future
 frames through `ChannelPredictionHead`. In multimodal mode, Chiron keeps its
 existing image-sequence encoder and gated cross-modal fusion path.
 
-## 10. Experiment Implications
+## 11. Experiment Implications
 
 Because the `lstm` and `lwm` channel encoders and heads changed, old checkpoints
 for those two models should not be reused.
@@ -476,7 +525,7 @@ same dataset split, seed, batch size, and epoch budget. If the existing
 `lwm_temporal` and `chiron` results were produced with the same code and data
 settings, they can be kept for a minimum rerun.
 
-## 11. Runner Defaults
+## 12. Runner Defaults
 
 | Setting | Value |
 |---|---|
@@ -490,7 +539,7 @@ settings, they can be kept for a minimum rerun.
 | fusion layers / heads | `3` / `4` |
 | batch size | `4` |
 
-## 12. Source Files
+## 13. Source Files
 
 - `multimodal_code_index/models/lstm_multimodal.py` - wideband-time LSTM
 - `multimodal_code_index/models/lwm_multimodal.py` - wideband-time Transformer
