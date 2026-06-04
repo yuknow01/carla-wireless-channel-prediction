@@ -587,6 +587,12 @@ prediction (B,P,Na,Nsc,2)
 `lwm_temporal` and `chiron` were already wideband/patch-time models and were not
 rewritten in this update.
 
+The diagrams in this section use the current runner defaults: `K=16`, `P=4`,
+`Na=16`, `Nsc=64`, `T_img=8`, and `D=256`. The x-axis is time `t`; the y-axis is
+subcarrier or subcarrier band. Unlike the current LSTM/LWM path, these models do
+not fold a full time column into one token. They split each channel frame into
+antenna-subcarrier patches and then build a temporal patch-token sequence.
+
 ### LWM-Temporal
 
 Sources:
@@ -597,6 +603,68 @@ Sources:
 It appends masked future channel frames and processes time plus
 antenna-subcarrier patches jointly. Image information is summarized into a
 scene context and injected through the LWM temporal model's CLS path.
+
+#### LWM-Temporal Shape Embedding View
+
+LWM-Temporal first appends `P=4` blank future frames. The future frames are
+masked, but they still occupy patch-token positions so the reconstruction head
+can emit the future channel values.
+
+```text
+                                      time t ->
+
+                  observed history frames                         masked future frames
+subcarrier      t0        t1        ...       t15          t16       t17       t18       t19
+sc00-15       [A0-A3]   [A0-A3]              [A0-A3]      [mask]    [mask]    [mask]    [mask]
+sc16-31       [A0-A3]   [A0-A3]              [A0-A3]      [mask]    [mask]    [mask]    [mask]
+sc32-47       [A0-A3]   [A0-A3]              [A0-A3]      [mask]    [mask]    [mask]    [mask]
+sc48-63       [A0-A3]   [A0-A3]              [A0-A3]      [mask]    [mask]    [mask]    [mask]
+
+A0-A3 means four antenna patch groups:
+  A0 = ant00-03, A1 = ant04-07, A2 = ant08-11, A3 = ant12-15
+
+Each patch token covers:
+  4 antennas x 16 subcarriers x 2 real/imag values = 128 raw values
+```
+
+For one frame, the `16 x 64` channel matrix becomes a `4 x 4` patch grid:
+
+```text
+antenna patch groups x subcarrier bands:
+
+             sc00-15       sc16-31       sc32-47       sc48-63
+ant00-03   patch 0,0     patch 0,1     patch 0,2     patch 0,3
+ant04-07   patch 1,0     patch 1,1     patch 1,2     patch 1,3
+ant08-11   patch 2,0     patch 2,1     patch 2,2     patch 2,3
+ant12-15   patch 3,0     patch 3,1     patch 3,2     patch 3,3
+
+patches per frame:
+  H x W = (16/4) x (64/16) = 4 x 4 = 16
+```
+
+The embedding sequence is therefore:
+
+```text
+channel_history: (K, Na, Nsc, 2) = (16, 16, 64, 2)
+  -> real/imag complex frame sequence
+  -> append P blank future frames
+  -> (T, Na, Nsc) = (20, 16, 64)
+
+patchify with patch=(4,16):
+  per patch: 4 x 16 x 2 = 128
+  per frame: 16 patches
+  all frames: T x 16 = 20 x 16 = 320 patches
+
+patch tokens before embedding:
+  (T*S, patch_dim) = (320, 128)
+
+Linear patch embedding:
+  (320, 128) -> (320, 256)
+
+CLS scene injection:
+  patch_embeddings (320, 256) + cls_token (1, 256)
+  -> sequence (321, 256)
+```
 
 Current default shape flow:
 
@@ -737,6 +805,80 @@ Chiron converts every channel frame into antenna-subcarrier patch tokens,
 processes them with temporal and spatial Chiron blocks, and decodes future
 frames through `ChannelPredictionHead`. In multimodal mode, Chiron keeps its
 existing image-sequence encoder and gated cross-modal fusion path.
+
+#### Chiron Shape Embedding View
+
+Chiron does not append blank future frames in the channel encoder. It embeds the
+`K=16` observed history frames and lets `P=4` learnable future queries decode the
+future frames from those encoded tokens.
+
+```text
+                           time t ->
+
+subcarrier       t0             t1             ...            t15
+sc00-31       [A0-A3]        [A0-A3]                        [A0-A3]
+sc32-63       [A0-A3]        [A0-A3]                        [A0-A3]
+
+A0-A3 means four antenna patch groups:
+  A0 = ant00-03, A1 = ant04-07, A2 = ant08-11, A3 = ant12-15
+
+Each patch token covers:
+  4 antennas x 32 subcarriers x 2 real/imag values = 256 raw values
+```
+
+For one frame, the `16 x 64` channel matrix becomes a `4 x 2` patch grid:
+
+```text
+antenna patch groups x subcarrier bands:
+
+             sc00-31       sc32-63
+ant00-03   patch 0,0     patch 0,1
+ant04-07   patch 1,0     patch 1,1
+ant08-11   patch 2,0     patch 2,1
+ant12-15   patch 3,0     patch 3,1
+
+patches per frame:
+  H x W = (16/4) x (64/32) = 4 x 2 = 8
+```
+
+The embedding sequence is:
+
+```text
+channel_history: (K, Na, Nsc, 2) = (16, 16, 64, 2)
+
+PatchEmbed2D with patch=(4,32):
+  per patch: 4 x 32 x 2 = 256
+  per frame: 8 patches
+  all history frames: K x 8 = 16 x 8 = 128 patches
+
+raw patch tokens:
+  (K*S, patch_dim) = (128, 256)
+
+Linear + LayerNorm + GELU:
+  (128, 256) -> (128, 256)
+
+add temporal and spatial position embeddings:
+  temporal_pos: (K, 1, 256)
+  spatial_pos:  (1, S, 256)
+  channel patch tokens: (K*S, 256) = (128, 256)
+```
+
+Inside each `ChironBlock`, the same tokens are viewed two ways:
+
+```text
+Temporal view:
+  for each spatial patch position s:
+  [token(t0,s), token(t1,s), ..., token(t15,s)]
+  shape per spatial position: (K, D) = (16, 256)
+
+Spatial view:
+  for each time step t:
+  [token(t,0), token(t,1), ..., token(t,7)]
+  shape per time step: (S, D) = (8, 256)
+
+After ChironBlock x 6:
+  channel_tokens: (K*S, D) = (128, 256)
+```
 
 Current default shape flow:
 
