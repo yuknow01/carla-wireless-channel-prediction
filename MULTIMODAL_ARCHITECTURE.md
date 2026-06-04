@@ -30,7 +30,7 @@ visual reference:
 The current LSTM/LWM implementation differs from the old per-subcarrier version:
 it uses wideband time tokens and fuses RGB per channel-history time step.
 
-Current code checkpoints:
+Current runner checkpoint:
 
 ```python
 # multimodal_code_index/train_multimodal4.py
@@ -45,24 +45,6 @@ common = dict(
     use_image=use_image,
     use_lidar=False,
 )
-```
-
-```python
-# multimodal_code_index/models/lstm_multimodal.py
-B, K, Na, Nsc, _ = channel_history.shape
-x = channel_history.reshape(B, K, Na * Nsc * 2)
-output, _ = self.lstm(x)
-ch_tokens = self.channel_proj(output)  # (B, K, embed_dim)
-```
-
-```python
-# multimodal_code_index/models/lwm_multimodal.py
-B, K, Na, Nsc, _ = channel_history.shape
-x = channel_history.reshape(B, K, Na * Nsc * 2)
-x = self.embedding(x)
-for layer in self.layers:
-    x = layer(x)
-ch_tokens = self.proj_adapter(x)  # (B, K, embed_dim)
 ```
 
 The older LSTM image/code block that described "last hidden only" per-subcarrier
@@ -253,6 +235,17 @@ current:
 
 Source: `multimodal_code_index/models/lstm_multimodal.py`
 
+Code checkpoint:
+
+```python
+# multimodal_code_index/models/lstm_multimodal.py
+def _encode_channel(self, channel_history):
+    B, K, Na, Nsc, _ = channel_history.shape
+    x = channel_history.reshape(B, K, Na * Nsc * 2)
+    output, _ = self.lstm(x)          # (B, K, hidden)
+    return self.channel_proj(output)  # (B, K, embed_dim)
+```
+
 ```text
 channel_history: (B, K, Na, Nsc, 2)
   -> reshape(B, K, Na*Nsc*2)
@@ -275,6 +268,22 @@ channel_tokens (B, K, 256)
 ## 5. LWM Channel Path
 
 Source: `multimodal_code_index/models/lwm_multimodal.py`
+
+Code checkpoint:
+
+```python
+# multimodal_code_index/models/lwm_multimodal.py
+def _encode_channel(self, channel_history):
+    B, K, Na, Nsc, _ = channel_history.shape
+    x = channel_history.reshape(B, K, Na * Nsc * 2)
+    x = self.embedding(x)
+    for layer in self.layers:
+        x = layer(x)
+    return x  # (B, K, d_model)
+
+ch_hidden = self._encode_channel(channel_history)
+ch_tokens = self.proj_adapter(ch_hidden)  # (B, K, embed_dim)
+```
 
 ```text
 channel_history: (B, K, Na, Nsc, 2)
@@ -604,6 +613,37 @@ It appends masked future channel frames and processes time plus
 antenna-subcarrier patches jointly. Image information is summarized into a
 scene context and injected through the LWM temporal model's CLS path.
 
+Code checkpoint:
+
+```python
+# multimodal_code_index/models/lwm_temporal_multimodal.py
+B, K, Na, Nsc, _ = channel_history.shape
+ph, pw = self.ph, self.pw
+P = self.prediction_horizon
+
+x = channel_history.float()
+x_c = torch.complex(x[..., 0], x[..., 1])  # (B, K, Na, Nsc)
+
+future = torch.zeros(B, P, Na, Nsc, dtype=x_c.dtype, device=x_c.device)
+seq = torch.cat([x_c, future], dim=1)      # (B, K+P, Na, Nsc)
+T = K + P
+
+mask = torch.zeros(B, T * self.tokens_per_frame, dtype=torch.bool, device=x.device)
+mask[:, -P * self.tokens_per_frame:] = True
+
+cls_inject = None
+if self.mode == "multimodal":
+    cls_inject = self._compute_scene_ctx(
+        image_seq, image_valid_mask, lidar_points, lidar_mask, B,
+    )
+
+recon = self.lwm(seq, mask, cls_inject=cls_inject)["reconstruction"]
+pred_tokens = recon[:, -P * self.tokens_per_frame:, :]
+pred_tokens = pred_tokens.view(B, P, self.H, self.W, ph, pw, 2)
+pred = pred_tokens.permute(0, 1, 2, 4, 3, 5, 6).contiguous()
+return pred.view(B, P, Na, Nsc, 2)
+```
+
 #### LWM-Temporal Shape Embedding View
 
 LWM-Temporal first appends `P=4` blank future frames. The future frames are
@@ -805,6 +845,40 @@ Chiron converts every channel frame into antenna-subcarrier patch tokens,
 processes them with temporal and spatial Chiron blocks, and decodes future
 frames through `ChannelPredictionHead`. In multimodal mode, Chiron keeps its
 existing image-sequence encoder and gated cross-modal fusion path.
+
+Code checkpoint:
+
+```python
+# multimodal_code_index/models/chiron_multimodal.py
+def _encode_channel(self, channel_history):
+    B, K, Na, Nsc, _ = channel_history.shape
+    S = self._num_spatial
+
+    x = channel_history.reshape(B * K, Na, Nsc, 2)
+    tokens = self.patch_embed(x)  # (B*K, S, D)
+    tokens = tokens.view(B, K, S, self.embed_dim)
+
+    tokens = tokens + self.temporal_pos[:, :K] + self.spatial_pos
+    tokens = tokens.reshape(B, K * S, self.embed_dim)
+
+    for block in self.blocks:
+        tokens = block(tokens, K, S)
+
+    return self.channel_norm(tokens)  # (B, K*S, D)
+
+channel_tokens = self._encode_channel(channel_history)
+all_sensor_tokens = torch.cat(sensor_tokens_list, dim=1)
+
+fused = channel_tokens
+for fusion_block in self.fusion_blocks:
+    fused = fusion_block(
+        fused,
+        all_sensor_tokens,
+        image_key_padding_mask=all_sensor_masks,
+    )
+
+return self.head(fused)
+```
 
 #### Chiron Shape Embedding View
 
