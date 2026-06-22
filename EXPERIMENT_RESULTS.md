@@ -13,7 +13,7 @@ The results below combine two sources:
   pipeline
   `multimodal_code_index/run_multimodal_16to4/outputs/figures/all_experiments_overview/all_experiments_overview.ipynb`
 - Multimodal comparison: the uniform multimodal sweep
-  `multimodal4_sc01030408_lr1e3_noamp_20260606_124953_*` (2026-06-06), which uses
+  `multimodal4_sc01030408_lr1e3_noamp_20260606_124953_*`, which uses
   one identical configuration (split, seed, batch size, 20 epochs, lr 1e-3, AMP
   off, RGB 8 frames) across every cell.
 
@@ -24,8 +24,14 @@ multimodal_code_index/run_multimodal_16to4/outputs/checkpoints/*_history.json
 multimodal_code_index/run_multimodal_16to4/outputs/checkpoints/*_summary.json
 ```
 
-Exported GitHub figures and compact summary (channel-only snapshot, prior to the
-2026-06-06 multimodal sweep):
+Exported GitHub figures from the current notebook:
+
+```text
+docs/images/results/current_*.png
+```
+
+Archived wideband figures and compact summary (channel-only snapshot, prior to
+the uniform multimodal sweep):
 
 ```text
 docs/images/results/wideband_all_*.png
@@ -76,10 +82,51 @@ For final model comparison, use validation NMSE as the primary metric.
 
 ## Visual Results
 
-Note: the exported PNG figures below were generated from the prior wideband
-snapshot. They do not yet include the 2026-06-06 uniform multimodal sweep or the
-`sc08` `lwm_temporal` channel-only run. The tables in this document are the
-current source of truth.
+The figures below are exported from:
+
+```text
+multimodal_code_index/run_multimodal_16to4/outputs/figures/all_experiments_overview/all_experiments_overview.ipynb
+```
+
+The current notebook figures are history-backed. They exclude legacy
+per-subcarrier LSTM/LWM histories and keep the latest non-legacy run per
+`scenario/mode/model`. They also do not include the checkpoint-only `sc08`
+`lwm_temporal` row because that run has no history JSON; the table below remains
+the source of truth for that checkpoint-only result.
+
+### Current Experiment Coverage
+
+![Current experiment coverage](docs/images/results/current_coverage_heatmap.png)
+
+### Current Normalized Best Validation NMSE
+
+![Current normalized best validation NMSE](docs/images/results/current_normalized_best_nmse.png)
+
+### Multimodal Gain/Loss vs Channel-Only
+
+![Current multimodal gain/loss](docs/images/results/current_multimodal_gain_loss.png)
+
+### Key Train/Validation NMSE Curves
+
+![Current key training curves](docs/images/results/current_key_training_curves.png)
+
+### Raw-Space NMSE vs Copy-Last Baseline
+
+![Current raw-space NMSE vs copy-last](docs/images/results/current_raw_space_vs_copy_last.png)
+
+This is the most important caveat plot: in raw channel space, the copy-last
+baseline is still much stronger than every trained model on the evaluated subset.
+Therefore normalized validation NMSE should not be used alone as the final
+performance claim.
+
+### Scenario Leaderboard
+
+![Current scenario leaderboard](docs/images/results/current_scenario_leaderboard.png)
+
+## Archived Wideband Snapshot Figures
+
+The following figures are retained for traceability. They were generated from the
+prior wideband snapshot and do not include the uniform multimodal sweep.
 
 ### Best Validation NMSE
 
@@ -146,7 +193,7 @@ JSON), from run `channel_only_temporal_chiron_noamp_20260603_162358`. It is not
 in the exported figures, so the prior best-by-scenario row for `sc08` (chiron,
 `-45.283 dB`) is now superseded.
 
-## Multimodal Results (Uniform Sweep, 2026-06-06)
+## Multimodal Results (Uniform Sweep)
 
 Run prefix: `multimodal4_sc01030408_lr1e3_noamp_20260606_124953`. All cells share
 the same split, seed, batch size, 20 epochs, lr 1e-3, AMP off, RGB 8 frames.
@@ -196,7 +243,7 @@ Only two cells improve with multimodal: `sc01` `lwm` (`-5.65 dB`) and `sc08`
 `lstm` (`-5.64 dB`). `chiron` degrades by 10 dB or more in every scenario. The
 image dependency of the `sc08` `lstm` gain is examined below.
 
-## Image-Dependency Diagnosis (2026-06-10)
+## Image-Dependency Diagnosis
 
 Script: `multimodal_code_index/run_multimodal_16to4/diagnose_image_dependency.py`
 (CPU eval). The only clear multimodal gain (`sc08` `lstm`) was tested against
@@ -236,11 +283,11 @@ four scenarios (24 runs). Not yet present:
 - `sc01` / `sc03` / `sc04` / `sc08` multimodal `lwm_temporal`
 
 `lwm_temporal` is deprioritized because it trains about 6x slower than chiron
-(2026-06-05 decision).
+(current training-cost decision).
 
-Caveat: the multimodal cells share one uniform 2026-06-06 configuration, but the
-channel-only cells come from several earlier runs with mixed settings (amp/noamp,
-different dates). For a strict paper-grade comparison, rerun the channel-only
+Caveat: the multimodal cells share one uniform multimodal-sweep configuration,
+but the channel-only cells come from several earlier run groups with mixed
+settings (amp/noamp). For a strict paper-grade comparison, rerun the channel-only
 cells under the same uniform configuration.
 
 ## Interpretation
@@ -249,7 +296,7 @@ cells under the same uniform configuration.
 - Channel-only prediction is strong: `lwm_temporal` wins `sc01`/`sc04`/`sc08`,
   `chiron` wins `sc03`, with best NMSE in the `-38` to `-51 dB` range.
 - The current multimodal design does not beat the best channel-only result in any
-  scenario. Only two same-model cells improve, and the 2026-06-10 diagnosis shows
+  scenario. Only two same-model cells improve, and the image-dependency diagnosis shows
   even those gains are independent of image content.
 - To make multimodal useful, add a channel residual to fusion, use a pretrained
   image encoder, extend the prediction horizon (`P >> 4`), or widen the image
