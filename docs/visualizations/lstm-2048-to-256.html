@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LSTM: 2,048차원 CSI가 16×256이 되는 과정</title>
+  <style>
+    :root{
+      --bg:#07111e; --panel:#0e1b2b; --panel2:#13243a; --line:#29415d;
+      --text:#eef6ff; --muted:#9db0c7; --cyan:#3dd9eb; --blue:#5f8dff;
+      --purple:#b778ff; --orange:#ffad5c; --green:#58df9b; --red:#ff6f7d;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 45% -10%,#14365c 0,#07111e 42%);color:var(--text);font-family:Inter,Pretendard,"Noto Sans KR",system-ui,sans-serif}
+    main{max-width:1240px;margin:auto;padding:34px 26px 60px}
+    h1{font-size:32px;margin:0 0 9px;letter-spacing:-.8px}
+    h2{font-size:19px;margin:0 0 17px;color:#dcecff}
+    p{line-height:1.65;margin:7px 0;color:var(--muted)}
+    .lead{font-size:16px;max-width:900px}
+    .badge{display:inline-block;padding:5px 10px;border-radius:99px;background:#183756;color:var(--cyan);font-weight:800;font-size:12px;margin-bottom:13px}
+    .card{background:linear-gradient(145deg,rgba(19,36,58,.96),rgba(10,23,39,.96));border:1px solid var(--line);border-radius:18px;padding:22px;margin-top:20px;box-shadow:0 14px 45px rgba(0,0,0,.22)}
+    .flow{display:grid;grid-template-columns:1fr 55px 1fr 55px 1.2fr;align-items:center;gap:6px}
+    .box{min-height:132px;border:1px solid var(--line);border-radius:14px;background:#0b192a;padding:17px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
+    .box strong{font-size:18px;margin-bottom:9px}
+    .shape{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:18px;font-weight:800;color:var(--cyan)}
+    .small{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.5}
+    .arrow{text-align:center;font-size:28px;color:var(--cyan)}
+    .not-reshape{border-color:#71394a;background:#281521;color:#ffd9df}
+    .not-reshape .shape{color:var(--red)}
+    .controls{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:0 0 18px}
+    input[type=range]{width:min(440px,60vw);accent-color:var(--cyan)}
+    button{border:1px solid #35617b;background:#12304a;color:#eaf8ff;border-radius:10px;padding:9px 14px;font-weight:750;cursor:pointer}
+    button:hover{background:#19425f}
+    .step-readout{font-family:ui-monospace,monospace;color:var(--cyan);font-size:15px;font-weight:800;min-width:92px}
+    .timeline{display:grid;grid-template-columns:repeat(16,1fr);gap:5px;margin:10px 0 20px}
+    .tick{height:42px;border-radius:8px;border:1px solid #29415d;background:#0a1726;color:#677c94;display:grid;place-items:center;font-size:11px;transition:.25s}
+    .tick.done{background:#123d4c;color:#aaf7ff;border-color:#2ab3c5}
+    .tick.now{background:var(--cyan);color:#04131b;font-weight:900;transform:translateY(-3px);box-shadow:0 0 20px rgba(61,217,235,.45)}
+    .step-grid{display:grid;grid-template-columns:1.1fr 70px 1.4fr 70px 1.1fr;align-items:center;gap:8px}
+    .input-box{border-color:#2e6892}
+    .output-box{border-color:#31966a}
+    .stack{display:grid;gap:8px;width:100%}
+    .layer{padding:9px 12px;border-radius:9px;background:#171c3e;border:1px solid #5e58a7;color:#e8ddff;font-weight:760}
+    .layer:first-child{border-color:#7b52a4}.layer:last-child{border-color:#a25dac}
+    .recur{font-size:11px;color:var(--orange);margin-top:9px}
+    .under{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
+    .eq{background:#071421;border:1px solid #29415d;border-radius:12px;padding:15px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:#cae6ff;line-height:1.75}
+    .output-strip{display:grid;grid-template-columns:repeat(16,1fr);gap:4px;margin-top:12px}
+    .h{height:30px;border-radius:6px;background:#13283a;border:1px solid #28425a;color:#617891;display:grid;place-items:center;font:10px ui-monospace,monospace;transition:.25s}
+    .h.on{background:#154f3a;border-color:#42c884;color:#c8ffe5}
+    .head-flow{display:grid;grid-template-columns:1fr 45px 1fr 45px 1fr 45px 1.2fr;align-items:center;gap:5px}
+    .key{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px}
+    .key > div{border-left:4px solid var(--cyan);padding:7px 12px;background:#0a1726;border-radius:8px;color:#c9daeb;line-height:1.55}
+    .key > div:nth-child(2){border-color:var(--purple)}
+    .key > div:nth-child(3){border-color:var(--green)}
+    .warning{margin-top:18px;padding:14px 16px;border-radius:12px;background:#2a171e;border:1px solid #71394a;color:#ffd8df;font-weight:750}
+    @media(max-width:820px){
+      h1{font-size:25px}.flow,.step-grid,.head-flow{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}
+      .under,.key{grid-template-columns:1fr}.box{min-height:110px}.timeline,.output-strip{grid-template-columns:repeat(8,1fr)}
+    }
+  </style>
+</head>
+<body>
+<main>
+  <span class="badge">CARLA WIRELESS · LSTM TENSOR FLOW</span>
+  <h1>2,048차원 CSI가 어떻게 16×256이 되는가?</h1>
+  <p class="lead">핵심은 <b style="color:#fff">2,048을 16×256으로 reshape하는 것이 아니라</b>, 16개 시점 각각의 2,048차원 입력을 LSTM이 256차원 hidden state로 변환한다는 것입니다.</p>
+
+  <section class="card">
+    <h2>① 한 프레임에서 2,048개 값 만들기</h2>
+    <div class="flow">
+      <div class="box">
+        <strong>한 시점의 복소수 CSI</strong>
+        <div class="shape">16 × 64 × 2</div>
+        <div class="small">안테나 × 서브캐리어 × Re/Im</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="box">
+        <strong>Flatten</strong>
+        <div class="shape">x<sub>t</sub> ∈ ℝ²⁰⁴⁸</div>
+        <div class="small">한 시점의 전체 채널을 하나의 벡터로 펼침</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="box">
+        <strong>16개 시점 입력</strong>
+        <div class="shape">(B, 16, 2,048)</div>
+        <div class="small">시간축 길이 16은 그대로 유지됨</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>② LSTM은 매 시점마다 2,048 → 256 변환</h2>
+    <div class="controls">
+      <button id="play">▶ 자동 재생</button>
+      <input id="slider" type="range" min="1" max="16" value="1" />
+      <span class="step-readout" id="readout">t = 1 / 16</span>
+    </div>
+    <div class="timeline" id="timeline"></div>
+    <div class="step-grid">
+      <div class="box input-box">
+        <strong id="inputTitle">현재 입력 x₁</strong>
+        <div class="shape">2,048차원</div>
+        <div class="small">현재 시점의 전체 안테나·서브캐리어·복소수 값</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="box">
+        <strong>3-layer LSTM</strong>
+        <div class="stack">
+          <div class="layer">Layer 1 · hidden 256</div>
+          <div class="layer">Layer 2 · hidden 256</div>
+          <div class="layer">Layer 3 · hidden 256</div>
+        </div>
+        <div class="recur" id="recur">초기 hidden/cell state와 함께 처리</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="box output-box">
+        <strong id="outputTitle">출력 h₁</strong>
+        <div class="shape">256차원</div>
+        <div class="small">현재까지 관측한 채널 변화를 요약한 특징</div>
+      </div>
+    </div>
+
+    <div class="under">
+      <div class="eq">
+        x<sub>t</sub> ∈ ℝ²⁰⁴⁸<br>
+        h<sub>t−1</sub>, c<sub>t−1</sub> ∈ ℝ²⁵⁶<br>
+        (h<sub>t</sub>, c<sub>t</sub>) = LSTM(x<sub>t</sub>, h<sub>t−1</sub>, c<sub>t−1</sub>)<br>
+        h<sub>t</sub> ∈ ℝ²⁵⁶
+      </div>
+      <div class="box" style="align-items:stretch;text-align:left">
+        <strong id="accTitle">현재 누적 출력: (B, 1, 256)</strong>
+        <div class="output-strip" id="outputs"></div>
+        <div class="small">16개 시점이 모두 처리되면 h₁…h₁₆을 시간축으로 쌓아 <b style="color:#58df9b">(B,16,256)</b>이 됩니다.</div>
+      </div>
+    </div>
+    <div class="warning">주의: 2,048 → 256은 단순 축소나 reshape가 아니라, 학습된 LSTM gate와 이전 시간의 상태를 이용한 비선형 시간 표현입니다.</div>
+  </section>
+
+  <section class="card">
+    <h2>③ LSTM 출력에서 미래 채널값 생성</h2>
+    <div class="head-flow">
+      <div class="box"><strong>LSTM 특징</strong><div class="shape">(B,16,256)</div><div class="small">과거 16개 시간 상태</div></div>
+      <div class="arrow">→</div>
+      <div class="box"><strong>미래 Query 4개</strong><div class="shape">(B,4,256)</div><div class="small">+1,+2,+3,+4 ms가 과거 특징을 참조</div></div>
+      <div class="arrow">→</div>
+      <div class="box"><strong>공통 MLP Head</strong><div class="shape">256 → 2,048</div><div class="small">미래 시점별 채널 변화량 생성</div></div>
+      <div class="arrow">→</div>
+      <div class="box"><strong>미래 복소수 CSI</strong><div class="shape">(B,4,16,64,2)</div><div class="small">마지막 CSI + 예측 변화량</div></div>
+    </div>
+    <div class="key">
+      <div><b>16은 시간 길이</b><br>입력과 LSTM 출력에서 그대로 유지됩니다.</div>
+      <div><b>256은 hidden 크기</b><br>각 시점의 채널 상태를 요약하는 학습 특징입니다.</div>
+      <div><b>4는 미래 시점 수</b><br>예측 Head가 네 개의 미래 CSI를 만듭니다.</div>
+    </div>
+  </section>
+</main>
+<script>
+  const slider=document.getElementById('slider');
+  const timeline=document.getElementById('timeline');
+  const outputs=document.getElementById('outputs');
+  const readout=document.getElementById('readout');
+  const inputTitle=document.getElementById('inputTitle');
+  const outputTitle=document.getElementById('outputTitle');
+  const recur=document.getElementById('recur');
+  const accTitle=document.getElementById('accTitle');
+  const play=document.getElementById('play');
+  let timer=null;
+  for(let i=1;i<=16;i++){
+    const t=document.createElement('div');t.className='tick';t.textContent='t'+i;timeline.appendChild(t);
+    const h=document.createElement('div');h.className='h';h.textContent='h'+i;outputs.appendChild(h);
+  }
+  function draw(){
+    const n=Number(slider.value);
+    readout.textContent=`t = ${n} / 16`;
+    inputTitle.innerHTML=`현재 입력 x<sub>${n}</sub>`;
+    outputTitle.innerHTML=`출력 h<sub>${n}</sub>`;
+    recur.innerHTML=n===1?'초기 hidden/cell state와 함께 처리':`이전 상태 h<sub>${n-1}</sub>, c<sub>${n-1}</sub>도 함께 사용`;
+    accTitle.textContent=`현재 누적 출력: (B, ${n}, 256)`;
+    [...timeline.children].forEach((e,i)=>{e.className='tick'+(i+1<n?' done':i+1===n?' now':'')});
+    [...outputs.children].forEach((e,i)=>{e.className='h'+(i<n?' on':'')});
+  }
+  slider.addEventListener('input',draw);
+  play.addEventListener('click',()=>{
+    if(timer){clearInterval(timer);timer=null;play.textContent='▶ 자동 재생';return}
+    if(Number(slider.value)===16)slider.value=1;
+    play.textContent='Ⅱ 정지';draw();
+    timer=setInterval(()=>{
+      const n=Number(slider.value);
+      if(n>=16){clearInterval(timer);timer=null;play.textContent='▶ 다시 재생';return}
+      slider.value=n+1;draw();
+    },620);
+  });
+  draw();
+</script>
+</body>
+</html>

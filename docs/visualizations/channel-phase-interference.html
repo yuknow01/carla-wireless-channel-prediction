@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>다중경로 위상과 CSI Magnitude 변화</title>
+  <style>
+    :root {
+      --bg:#071525; --panel:#0d2238; --panel2:#102a43; --line:#24445f;
+      --text:#f3f8fc; --muted:#9cb2c5; --cyan:#43d5ff; --pink:#d76cff;
+      --yellow:#ffd166; --orange:#ff934f; --purple:#7857d9; --green:#55e0a3;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;background:radial-gradient(circle at 60% -20%,#123756 0,var(--bg) 48%);color:var(--text);font-family:"Noto Sans KR","Pretendard",system-ui,sans-serif}
+    main{max-width:1460px;margin:0 auto;padding:34px 30px 50px}
+    h1{margin:0;font-size:clamp(28px,3.3vw,52px);letter-spacing:-.045em}
+    .lead{color:var(--muted);font-size:18px;line-height:1.7;margin:10px 0 26px}
+    .badge{display:inline-block;padding:5px 10px;border:1px solid #2d7398;border-radius:999px;color:var(--cyan);font-size:12px;font-weight:800;letter-spacing:.08em;margin-bottom:12px}
+    .grid{display:grid;grid-template-columns:1.02fr .98fr;gap:18px}
+    .card{background:linear-gradient(145deg,rgba(16,42,67,.96),rgba(9,29,48,.96));border:1px solid var(--line);border-radius:20px;padding:20px;box-shadow:0 16px 45px #0005;overflow:hidden}
+    .card h2{margin:0 0 6px;font-size:22px;letter-spacing:-.03em}
+    .sub{color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:14px}
+    .diagram{width:100%;height:300px;display:block;background:#081929;border-radius:14px;border:1px solid #173b59}
+    .controls{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;margin:12px 0 10px}
+    input[type=range]{width:100%;accent-color:var(--yellow)}
+    .phase-readout{font-variant-numeric:tabular-nums;font-weight:900;color:var(--yellow);min-width:82px;text-align:right}
+    .buttons{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+    button{border:1px solid #38617f;background:#0b1e32;color:var(--text);padding:9px 13px;border-radius:10px;font-weight:800;cursor:pointer}
+    button:hover{border-color:var(--cyan);color:var(--cyan)}
+    button.active{background:#183e5e;border-color:var(--cyan);color:var(--cyan)}
+    canvas{width:100%;display:block;background:#081929;border:1px solid #173b59;border-radius:14px}
+    #waves{height:300px}.mini-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+    #phasor{height:250px}.metric{height:250px;background:#081929;border:1px solid #173b59;border-radius:14px;padding:18px;display:flex;flex-direction:column;justify-content:center}
+    .state{font-size:28px;font-weight:950;color:var(--yellow)}
+    .value{font-size:44px;font-weight:950;font-variant-numeric:tabular-nums;margin:7px 0}
+    .gauge{height:18px;background:#132d44;border-radius:99px;overflow:hidden;margin:8px 0 12px}.fill{height:100%;width:0;background:linear-gradient(90deg,var(--purple),var(--orange),var(--yellow));transition:width .08s linear}
+    .equation{font-family:"Times New Roman",serif;font-size:20px;color:#dbeeff;line-height:1.55}
+    .wide{grid-column:1/-1}
+    #timeline{height:330px}
+    .explain{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:14px}
+    .note{background:#0a1d30;border:1px solid #23445f;border-radius:14px;padding:15px;line-height:1.6;color:#d8e8f4;font-size:14px}
+    .note strong{display:block;color:var(--cyan);font-size:15px;margin-bottom:4px}
+    .warning{border-color:#8e6130;background:#241c18}.warning strong{color:var(--orange)}
+    .key{margin-top:18px;border:1px solid #37698a;border-left:6px solid var(--cyan);background:#0c2439;border-radius:14px;padding:16px 18px;font-size:17px;line-height:1.65}
+    code{color:var(--yellow)}
+    @media(max-width:980px){.grid{grid-template-columns:1fr}.wide{grid-column:auto}.mini-grid,.explain{grid-template-columns:1fr}.diagram{height:260px}}
+  </style>
+</head>
+<body>
+<main>
+  <span class="badge">INTERACTIVE CSI EXPLAINER</span>
+  <h1>왜 장기 CSI에서 밝고 어두운 띠가 반복될까?</h1>
+  <p class="lead">개별 경로의 크기는 거의 같아도, 차량 이동으로 <b>경로 사이의 상대 위상</b>이 변하면 수신점에서 보강과 상쇄가 반복됩니다. 아래 슬라이더를 움직여 직접 확인해 보세요.</p>
+
+  <section class="grid">
+    <article class="card">
+      <h2>1. BS에서 UE까지 한 신호가 여러 경로로 도착</h2>
+      <div class="sub">직접경로와 반사경로는 이동 거리가 달라 서로 다른 delay와 phase를 가집니다.</div>
+      <svg class="diagram" viewBox="0 0 700 300" role="img" aria-label="BS, UE, 직접경로와 반사경로">
+        <defs>
+          <marker id="ac" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#43d5ff"/></marker>
+          <marker id="ap" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 Z" fill="#d76cff"/></marker>
+          <filter id="glow"><feGaussianBlur stdDeviation="2.5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        </defs>
+        <rect x="0" y="0" width="700" height="300" fill="#081929"/>
+        <line x1="0" y1="250" x2="700" y2="250" stroke="#36526a" stroke-width="2"/>
+        <g transform="translate(65 88)">
+          <rect x="22" y="38" width="16" height="124" rx="4" fill="#43d5ff"/><path d="M30 38 L8 88 H52 Z" fill="none" stroke="#43d5ff" stroke-width="5"/><circle cx="30" cy="25" r="8" fill="#ffd166" filter="url(#glow)"/>
+          <text x="30" y="188" fill="#fff" text-anchor="middle" font-size="22" font-weight="900">BS</text>
+        </g>
+        <g transform="translate(555 184)">
+          <rect x="0" y="22" width="98" height="34" rx="9" fill="#ff934f"/><path d="M20 22 L36 4 H72 L87 22" fill="#ffb17a"/><circle cx="22" cy="58" r="10" fill="#102a43" stroke="#fff"/><circle cx="76" cy="58" r="10" fill="#102a43" stroke="#fff"/><text x="49" y="88" fill="#fff" text-anchor="middle" font-size="22" font-weight="900">UE</text>
+          <path d="M20,-16 H78" stroke="#55e0a3" stroke-width="4" marker-end="url(#ac)"/><text x="48" y="-25" fill="#55e0a3" text-anchor="middle" font-size="15">motion</text>
+        </g>
+        <g transform="translate(350 118)"><rect x="0" y="0" width="100" height="132" rx="5" fill="#516273"/><rect x="18" y="18" width="20" height="24" fill="#91a4b4"/><rect x="58" y="18" width="20" height="24" fill="#91a4b4"/><rect x="18" y="60" width="20" height="24" fill="#91a4b4"/><rect x="58" y="60" width="20" height="24" fill="#91a4b4"/><text x="50" y="118" fill="#dbe7ef" text-anchor="middle" font-size="14">reflector</text></g>
+        <path d="M103 115 C260 66, 430 78, 580 203" fill="none" stroke="#43d5ff" stroke-width="4" marker-end="url(#ac)" filter="url(#glow)"/>
+        <text x="280" y="66" fill="#43d5ff" font-size="17" font-weight="800">Path 1 · shorter delay</text>
+        <path d="M103 115 L350 155 L580 203" fill="none" stroke="#d76cff" stroke-width="4" marker-end="url(#ap)" filter="url(#glow)"/>
+        <text x="226" y="177" fill="#d76cff" font-size="17" font-weight="800">Path 2 · reflected</text>
+        <text x="350" y="282" fill="#9cb2c5" text-anchor="middle" font-size="17">이동 → 경로 길이 변화 → 상대 위상 Δφ 변화</text>
+      </svg>
+    </article>
+
+    <article class="card">
+      <h2>2. 상대 위상을 움직여 보세요</h2>
+      <div class="sub">두 경로의 amplitude는 <b>a₁=1.0, a₂=0.9</b>로 고정하고, 위상 차이만 바꿉니다.</div>
+      <div class="controls"><input id="phase" type="range" min="0" max="360" value="0" step="1"><div class="phase-readout"><span id="deg">0</span>°</div></div>
+      <div class="buttons"><button data-phase="0">0° 보강</button><button data-phase="90">90° 부분 보강</button><button data-phase="180">180° 상쇄</button><button id="play">▶ 자동 재생</button></div>
+      <canvas id="waves"></canvas>
+      <div class="mini-grid">
+        <canvas id="phasor"></canvas>
+        <div class="metric">
+          <div class="state" id="state">보강 간섭</div>
+          <div class="value">|H| = <span id="mag">1.900</span></div>
+          <div class="gauge"><div class="fill" id="fill"></div></div>
+          <div class="equation">|H|² = a₁² + a₂² + 2a₁a₂ cos(Δφ)</div>
+        </div>
+      </div>
+    </article>
+
+    <article class="card wide">
+      <h2>3. 같은 연속 채널을 1 ms와 5 ms로 관측하면</h2>
+      <div class="sub">장기 조건이 채널을 더 흔들리게 만드는 것이 아닙니다. 같은 변화를 더 긴 구간에서 성기게 선택하므로 밝고 어두운 세로 띠가 더 눈에 띕니다.</div>
+      <canvas id="timeline"></canvas>
+      <div class="explain">
+        <div class="note"><strong>1 ms grid</strong>중간 변화를 촘촘하게 보므로 보강에서 상쇄로 가는 과정이 부드럽게 연결됩니다.</div>
+        <div class="note"><strong>5 ms grid</strong>중간 상태를 건너뛰어 밝은 프레임과 어두운 프레임이 번갈아 선택될 수 있습니다.</div>
+        <div class="note warning"><strong>중요</strong><code>밝음=LOS</code>, <code>어두움=NLOS</code>가 아닙니다. 밝기는 모든 경로를 합친 결과의 상대적인 크기입니다.</div>
+      </div>
+      <div class="key"><b>핵심:</b> 위상 회전 하나만으로는 magnitude가 변하지 않습니다. <b>서로 다른 delay를 가진 여러 경로의 상대 위상</b>이 변하고, 수신점에서 그 경로들이 더해질 때 보강·상쇄가 생겨 <code>|H|</code>가 반복적으로 커졌다 작아집니다.</div>
+    </article>
+  </section>
+</main>
+
+<script>
+  const phase=document.querySelector('#phase'), deg=document.querySelector('#deg');
+  const magEl=document.querySelector('#mag'), stateEl=document.querySelector('#state'), fill=document.querySelector('#fill');
+  const play=document.querySelector('#play'); let playing=false, raf=0, last=0;
+  const A1=1.0,A2=.9;
+  function setup(canvas){const dpr=devicePixelRatio||1, r=canvas.getBoundingClientRect();canvas.width=Math.round(r.width*dpr);canvas.height=Math.round(r.height*dpr);const c=canvas.getContext('2d');c.setTransform(dpr,0,0,dpr,0,0);return [c,r.width,r.height]}
+  function path(c,fn,x0,x1,color,width=2){c.beginPath();for(let x=x0;x<=x1;x+=2){const y=fn(x);x===x0?c.moveTo(x,y):c.lineTo(x,y)}c.strokeStyle=color;c.lineWidth=width;c.stroke()}
+  function drawWaves(phi){const [c,w,h]=setup(document.querySelector('#waves'));c.clearRect(0,0,w,h);const rows=[70,150,236],amp=31,cycles=3.2;
+    c.font='700 13px system-ui';c.fillStyle='#9cb2c5';c.fillText('Path 1',14,rows[0]-40);c.fillText('Path 2',14,rows[1]-40);c.fillStyle='#ffd166';c.fillText('수신점에서 합성된 H',14,rows[2]-43);
+    rows.forEach(y=>{c.strokeStyle='#29465e';c.lineWidth=1;c.beginPath();c.moveTo(0,y);c.lineTo(w,y);c.stroke()});
+    const th=x=>2*Math.PI*cycles*x/w;
+    path(c,x=>rows[0]-amp*A1*Math.sin(th(x)),0,w,'#43d5ff',3);
+    path(c,x=>rows[1]-amp*A2*Math.sin(th(x)+phi),0,w,'#d76cff',3);
+    path(c,x=>rows[2]-amp*(A1*Math.sin(th(x))+A2*Math.sin(th(x)+phi)),0,w,'#ffd166',4);
+  }
+  function arrow(c,x0,y0,x1,y1,color,label){c.strokeStyle=color;c.fillStyle=color;c.lineWidth=4;c.beginPath();c.moveTo(x0,y0);c.lineTo(x1,y1);c.stroke();const a=Math.atan2(y1-y0,x1-x0);c.beginPath();c.moveTo(x1,y1);c.lineTo(x1-10*Math.cos(a-.45),y1-10*Math.sin(a-.45));c.lineTo(x1-10*Math.cos(a+.45),y1-10*Math.sin(a+.45));c.closePath();c.fill();c.font='700 12px system-ui';c.fillText(label,x1+5,y1)}
+  function drawPhasor(phi){const [c,w,h]=setup(document.querySelector('#phasor'));c.clearRect(0,0,w,h);const ox=w*.42,oy=h*.55,s=Math.min(w,h)*.30;c.strokeStyle='#29465e';c.lineWidth=1;c.beginPath();c.moveTo(20,oy);c.lineTo(w-20,oy);c.moveTo(ox,20);c.lineTo(ox,h-20);c.stroke();
+    const x1=ox+s*A1,y1=oy;const x2=x1+s*A2*Math.cos(phi),y2=y1-s*A2*Math.sin(phi);const xr=ox+s*(A1+A2*Math.cos(phi)),yr=oy-s*A2*Math.sin(phi);
+    arrow(c,ox,oy,x1,y1,'#43d5ff','a₁');arrow(c,x1,y1,x2,y2,'#d76cff','a₂');arrow(c,ox,oy,xr,yr,'#ffd166','H');
+    c.fillStyle='#9cb2c5';c.font='700 13px system-ui';c.fillText('복소 평면에서 벡터 합',14,22)
+  }
+  function color(v){const t=Math.max(0,Math.min(1,v/1.9));const stops=[[7,13,30],[77,31,114],[221,77,104],[255,209,102],[255,247,210]];const q=t*(stops.length-1),i=Math.min(stops.length-2,Math.floor(q)),f=q-i,a=stops[i],b=stops[i+1];return `rgb(${a.map((x,k)=>Math.round(x+(b[k]-x)*f)).join(',')})`}
+  function drawTimeline(){const [c,w,h]=setup(document.querySelector('#timeline'));c.clearRect(0,0,w,h);const L=58,R=w-24,top=46,plotH=108,T=75,period=20;
+    const m=t=>Math.sqrt(A1*A1+A2*A2+2*A1*A2*Math.cos(2*Math.PI*t/period));
+    c.strokeStyle='#29465e';c.lineWidth=1;for(let y=0;y<=2;y++){const yy=top+y*plotH/2;c.beginPath();c.moveTo(L,yy);c.lineTo(R,yy);c.stroke()}
+    c.fillStyle='#9cb2c5';c.font='12px system-ui';c.fillText('|H|',16,top+8);c.fillText('0 ms',L-10,top+plotH+22);c.fillText('75 ms',R-40,top+plotH+22);
+    path(c,x=>{const t=(x-L)/(R-L)*T;return top+plotH-(m(t)/1.9)*plotH},L,R,'#ffd166',3);
+    c.fillStyle='#43d5ff';c.font='800 13px system-ui';c.fillText('1 ms samples · 촘촘한 변화',L,190);
+    for(let t=0;t<=T;t+=1){const x=L+t/T*(R-L),v=m(t),y=206;c.fillStyle=color(v);c.fillRect(x-1,y,Math.max(2,(R-L)/T-1),22)}
+    c.fillStyle='#ff934f';c.fillText('5 ms samples · 성긴 bright/dark stripes',L,264);
+    for(let t=0;t<=T;t+=5){const x=L+t/T*(R-L),v=m(t),bw=(R-L)/(T/5+1)-3;c.fillStyle=color(v);c.fillRect(x,280,bw,30);c.fillStyle='#9cb2c5';c.font='10px system-ui';c.fillText(t,x,326)}
+  }
+  function update(){const d=+phase.value,phi=d*Math.PI/180,m=Math.sqrt(A1*A1+A2*A2+2*A1*A2*Math.cos(phi));deg.textContent=d;magEl.textContent=m.toFixed(3);fill.style.width=`${m/1.9*100}%`;
+    const dist=Math.abs(((d+180)%360)-180),anti=Math.abs(d-180);if(dist<45){stateEl.textContent='보강 간섭';stateEl.style.color='#ffd166'}else if(anti<45){stateEl.textContent='상쇄 간섭';stateEl.style.color='#d76cff'}else{stateEl.textContent='부분 보강/상쇄';stateEl.style.color='#ff934f'}drawWaves(phi);drawPhasor(phi)}
+  phase.addEventListener('input',update);document.querySelectorAll('[data-phase]').forEach(b=>b.onclick=()=>{phase.value=b.dataset.phase;update()});
+  play.onclick=()=>{playing=!playing;play.textContent=playing?'⏸ 일시정지':'▶ 자동 재생';play.classList.toggle('active',playing);if(playing){last=performance.now();raf=requestAnimationFrame(loop)}else cancelAnimationFrame(raf)};
+  function loop(now){if(!playing)return;const dt=now-last;last=now;phase.value=(+phase.value+dt*.055)%360;update();raf=requestAnimationFrame(loop)}
+  addEventListener('resize',()=>{update();drawTimeline()});update();drawTimeline();
+</script>
+</body>
+</html>

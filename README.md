@@ -19,6 +19,12 @@ Training commands and smoke checks are documented in [EXPERIMENTS.md](EXPERIMENT
 | [EXPERIMENT_RESULTS.md](EXPERIMENT_RESULTS.md) | Current sc01/sc04 channel-only vs multimodal results and metric interpretation |
 | [multimodal_code_index/run_multimodal_16to4/README.md](multimodal_code_index/run_multimodal_16to4/README.md) | Detailed notes for the current 16-to-4 experiment runner |
 
+## Interactive Visualizations
+
+- [Visualization home](https://yuknow01.github.io/carla-wireless-channel-prediction/)
+- [LSTM CSI embedding: 2,048 to 256](https://yuknow01.github.io/carla-wireless-channel-prediction/visualizations/lstm-2048-to-256.html)
+- [Channel phase and multipath interference](https://yuknow01.github.io/carla-wireless-channel-prediction/visualizations/channel-phase-interference.html)
+
 ## Pipeline Overview
 
 ```text
