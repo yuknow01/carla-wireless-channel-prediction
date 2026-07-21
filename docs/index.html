@@ -7,21 +7,46 @@
   <style>
     :root{--bg:#07111e;--panel:#102038;--line:#28435f;--text:#eff7ff;--muted:#9eb2c8;--cyan:#3dd9eb;--purple:#b778ff}
     *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% -20%,#173c64,#07111e 48%);color:var(--text);font-family:Inter,Pretendard,"Noto Sans KR",system-ui,sans-serif}
-    main{max-width:1040px;margin:auto;padding:72px 26px}h1{font-size:38px;letter-spacing:-1px;margin:12px 0}p{color:var(--muted);line-height:1.7}.badge{display:inline-block;padding:6px 11px;border-radius:99px;background:#163957;color:var(--cyan);font-size:12px;font-weight:800}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-top:38px}.card{display:block;text-decoration:none;color:inherit;padding:26px;border:1px solid var(--line);border-radius:18px;background:linear-gradient(145deg,rgba(18,39,65,.97),rgba(10,22,37,.97));transition:.2s}.card:hover{transform:translateY(-4px);border-color:var(--cyan);box-shadow:0 18px 45px rgba(0,0,0,.3)}.card:nth-child(2):hover{border-color:var(--purple)}h2{font-size:21px;margin:0 0 10px}.shape{font:700 15px ui-monospace,monospace;color:var(--cyan);margin-top:18px}.card:nth-child(2) .shape{color:var(--purple)}footer{margin-top:38px;color:#70869e;font-size:13px}@media(max-width:720px){.grid{grid-template-columns:1fr}h1{font-size:30px}}
+    main{max-width:1040px;margin:auto;padding:72px 26px}h1{font-size:38px;letter-spacing:-1px;margin:12px 0}p{color:var(--muted);line-height:1.7}.badge{display:inline-block;padding:6px 11px;border-radius:99px;background:#163957;color:var(--cyan);font-size:12px;font-weight:800}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-top:38px}.card{display:block;text-decoration:none;color:inherit;padding:26px;border:1px solid var(--line);border-top:3px solid var(--card,var(--cyan));border-radius:18px;background:linear-gradient(145deg,rgba(18,39,65,.97),rgba(10,22,37,.97));transition:.2s}.card:hover{transform:translateY(-4px);border-color:var(--card,var(--cyan));box-shadow:0 18px 45px rgba(0,0,0,.3)}h2{font-size:21px;margin:0 0 10px}.shape{font:700 15px ui-monospace,monospace;color:var(--card,var(--cyan));margin-top:18px}footer{margin-top:38px;color:#70869e;font-size:13px}@media(max-width:720px){.grid{grid-template-columns:1fr}h1{font-size:30px}}
   </style>
 </head>
 <body>
   <main>
     <span class="badge">INTERACTIVE RESEARCH VISUALIZATIONS</span>
     <h1>CARLA Wireless Channel Prediction</h1>
-    <p>복소수 CSI의 임베딩, LSTM 시간 처리, 다중경로 위상 간섭을 브라우저에서 단계별로 확인할 수 있는 시각화 자료입니다.</p>
+    <p>실제 CARLA 실험 코드의 tensor shape와 하이퍼파라미터를 기준으로 각 채널 예측 모델과 멀티모달 fusion을 단계별로 설명합니다.</p>
     <div class="grid">
-      <a class="card" href="visualizations/lstm-2048-to-256.html">
+      <a class="card" style="--card:#ffad5c" href="visualizations/lstm-2048-to-256.html">
         <h2>LSTM CSI 임베딩</h2>
         <p>한 시점의 2,048차원 CSI가 256차원 hidden state로 변환되고, 16개 시간 출력이 쌓이는 과정을 슬라이더와 애니메이션으로 설명합니다.</p>
         <div class="shape">(B,16,2048) → (B,16,256)</div>
       </a>
-      <a class="card" href="visualizations/channel-phase-interference.html">
+      <a class="card" style="--card:#b778ff" href="visualizations/lwm.html">
+        <h2>LWM · Transformer</h2>
+        <p>Wideband time token, 12-layer self-attention, 64→256 adapter와 공통 P-query head의 흐름을 설명합니다.</p>
+        <div class="shape">2,048 → d64 → d256</div>
+      </a>
+      <a class="card" style="--card:#58df9b" href="visualizations/mamba.html">
+        <h2>Mamba · Selective SSM</h2>
+        <p>128차원 시간 토큰과 selective state-space scan, 4개 Mamba block의 역할을 시각화합니다.</p>
+        <div class="shape">2,048 → d128 · depth 4</div>
+      </a>
+      <a class="card" style="--card:#3dd9eb" href="visualizations/dtcn.html">
+        <h2>DTCN · Delay-aware TCN</h2>
+        <p>주파수·지연 dual embedding과 dilation에 따라 넓어지는 causal convolution 수용영역을 보여줍니다.</p>
+        <div class="shape">Raw + IFFT delay → d256</div>
+      </a>
+      <a class="card" style="--card:#ffad5c" href="visualizations/chiron.html">
+        <h2>Chiron · Spatio-Temporal</h2>
+        <p>16×64 CSI 격자를 4×32 patch로 나누고 temporal·spatial attention을 분리하는 과정을 설명합니다.</p>
+        <div class="shape">16 frames × 8 patches = 128 tokens</div>
+      </a>
+      <a class="card" style="--card:#5f8dff" href="visualizations/multimodal-fusion.html">
+        <h2>Multimodal Fusion</h2>
+        <p>BS camera·Radar·LiDAR encoder, channel-to-sensor cross-attention, GatedFusion·EGRP·MLLM을 비교합니다.</p>
+        <div class="shape">z′ = z + g·CrossAttention(z,s)</div>
+      </a>
+      <a class="card" style="--card:#b778ff" href="visualizations/channel-phase-interference.html">
         <h2>채널 위상과 다중경로 간섭</h2>
         <p>직접파와 반사파의 상대 위상이 변할 때 보강·상쇄 간섭으로 수신 채널 크기가 달라지는 과정을 설명합니다.</p>
         <div class="shape">H = Σ aₗeʲφˡ</div>
