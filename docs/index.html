@@ -16,9 +16,9 @@
     <h1>CARLA Wireless Channel Prediction</h1>
     <p>실제 CARLA 실험 코드의 tensor shape와 하이퍼파라미터를 기준으로 각 채널 예측 모델과 멀티모달 fusion을 단계별로 설명합니다.</p>
     <div class="grid">
-      <a class="card" style="--card:#ffad5c" href="visualizations/lstm-2048-to-256.html">
-        <h2>LSTM CSI 임베딩</h2>
-        <p>한 시점의 2,048차원 CSI가 256차원 hidden state로 변환되고, 16개 시간 출력이 쌓이는 과정을 슬라이더와 애니메이션으로 설명합니다.</p>
+      <a class="card" style="--card:#ffad5c" href="visualizations/lstm.html">
+        <h2>LSTM · Recurrent Predictor</h2>
+        <p>3-layer LSTM 구조, 미래 P-query head, 실제 학습곡선과 C1/C2/C4 결과를 함께 설명합니다.</p>
         <div class="shape">(B,16,2048) → (B,16,256)</div>
       </a>
       <a class="card" style="--card:#b778ff" href="visualizations/lwm.html">

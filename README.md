@@ -22,7 +22,8 @@ Training commands and smoke checks are documented in [EXPERIMENTS.md](EXPERIMENT
 ## Interactive Visualizations
 
 - [Visualization home](https://yuknow01.github.io/carla-wireless-channel-prediction/)
-- [LSTM CSI embedding: 2,048 to 256](https://yuknow01.github.io/carla-wireless-channel-prediction/visualizations/lstm-2048-to-256.html)
+- [LSTM recurrent channel predictor](https://yuknow01.github.io/carla-wireless-channel-prediction/visualizations/lstm.html)
+- [LSTM embedding detail: 2,048 to 256](https://yuknow01.github.io/carla-wireless-channel-prediction/visualizations/lstm-2048-to-256.html)
 - [LWM wideband Transformer](https://yuknow01.github.io/carla-wireless-channel-prediction/visualizations/lwm.html)
 - [Mamba selective state-space backbone](https://yuknow01.github.io/carla-wireless-channel-prediction/visualizations/mamba.html)
 - [DTCN frequency/delay causal TCN](https://yuknow01.github.io/carla-wireless-channel-prediction/visualizations/dtcn.html)
