@@ -291,6 +291,7 @@ class ChironMultiModalPredictor(nn.Module):
         # Prediction head
         prediction_head_hidden: int = 1024,
         prediction_horizon: int = 1,
+        delta_skip: bool = False,
         # General
         dropout: float = 0.1,
     ):
@@ -309,6 +310,7 @@ class ChironMultiModalPredictor(nn.Module):
         self.use_ego_state = use_ego_state
         self.use_image = use_image
         self.use_lidar = use_lidar
+        self.delta_skip = delta_skip
 
         # ---- Channel backbone (shared with ChironChannelPredictor) ----
         if mode in ("multimodal", "channel_only"):
@@ -427,9 +429,13 @@ class ChironMultiModalPredictor(nn.Module):
             hidden_dim=prediction_head_hidden,
             dropout=dropout,
             prediction_horizon=prediction_horizon,
+            delta_skip=delta_skip,
         )
 
         self._init_weights()
+        # Must run after _init_weights, which re-initializes every Linear.
+        if delta_skip:
+            self.head.zero_init_output()
 
     def _init_weights(self):
         for m in self.modules():
@@ -613,13 +619,13 @@ class ChironMultiModalPredictor(nn.Module):
                     image_key_padding_mask=all_sensor_masks,
                 )
 
-            return self.head(fused)
+            return self.head(fused, last_frame=channel_history[:, -1])
 
         # ---- Channel-only ----
         if self.mode == "channel_only":
             assert channel_history is not None, "channel_only mode requires channel_history"
             channel_tokens = self._encode_channel(channel_history)
-            return self.head(channel_tokens)
+            return self.head(channel_tokens, last_frame=channel_history[:, -1])
 
         # ---- Image-only ----
         assert image_seq is not None, "image_only mode requires image input"
@@ -649,6 +655,7 @@ class ChironMultiModalPredictor(nn.Module):
             "use_ego_state": self.use_ego_state,
             "use_image": self.use_image,
             "use_lidar": self.use_lidar,
+            "delta_skip": self.delta_skip,
         }
 
     @classmethod

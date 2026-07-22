@@ -6,18 +6,20 @@ prediction models for multimodal wireless channel forecasting.
 The current active experiment predicts `P=4` future channel frames from `K=16`
 past channel frames and, in multimodal mode, a time-aligned latest-past RGB
 image sequence.
-Training commands and smoke checks are documented in [EXPERIMENTS.md](EXPERIMENTS.md).
+Training commands and smoke checks are archived in [docs_archive/EXPERIMENTS.md](docs_archive/EXPERIMENTS.md).
 
 ## Project Map
 
 | Document | Purpose |
 |---|---|
+| [scenario_pilot/channel_prediction/EXPERIMENT_PLAN.md](scenario_pilot/channel_prediction/EXPERIMENT_PLAN.md) | **현행 마스터 실험 명세** (launch 승인 게이트) |
+| [scenario_pilot/channel_prediction/FUSION_ARCHITECTURES.md](scenario_pilot/channel_prediction/FUSION_ARCHITECTURES.md) | **현행 융합 3계열 설계 + 코드 지도** |
+| [reports/experiments_full_report.md](reports/experiments_full_report.md) | **현행 결과 종합** (TL;DR + 전 수치) |
+| [reports/related_work_critique_and_positioning.md](reports/related_work_critique_and_positioning.md) | 타 논문 비판 + 논문 포지셔닝 |
 | [SIM_SETTINGS.md](SIM_SETTINGS.md) | How the CARLA, Blender, and Sionna simulation is built |
 | [DATASET_SPEC.md](DATASET_SPEC.md) | Dataset directories, file formats, sample construction, and tensor shapes |
-| [MULTIMODAL_ARCHITECTURE.md](MULTIMODAL_ARCHITECTURE.md) | Model architecture for LSTM, LWM, LWM-Temporal, and Chiron |
-| [EXPERIMENTS.md](EXPERIMENTS.md) | Training commands, checkpoints, logs, and result tracking |
-| [EXPERIMENT_RESULTS.md](EXPERIMENT_RESULTS.md) | Current sc01/sc04 channel-only vs multimodal results and metric interpretation |
-| [multimodal_code_index/run_multimodal_16to4/README.md](multimodal_code_index/run_multimodal_16to4/README.md) | Detailed notes for the current 16-to-4 experiment runner |
+| [docs_archive/](docs_archive/README.md) | 통합/대체된 구 문서 보관 (구 MULTIMODAL_ARCHITECTURE, EXPERIMENTS, EXPERIMENT_RESULTS 등) |
+| [multimodal_code_index/run_multimodal_16to4/README.md](multimodal_code_index/run_multimodal_16to4/README.md) | (레거시) 16-to-4 experiment runner 노트 |
 
 ## Interactive Visualizations
 

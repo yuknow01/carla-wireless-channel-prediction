@@ -72,6 +72,7 @@ class LSTMMultiModalPredictor(nn.Module):
         fusion_heads: int = 4,
         fusion_dropout: float = 0.1,
         delta_t: float = 0.0005,
+        delta_skip: bool = False,
     ):
         super().__init__()
         if mode not in self.VALID_MODES:
@@ -87,6 +88,7 @@ class LSTMMultiModalPredictor(nn.Module):
         self.use_image = use_image
         self.use_lidar = use_lidar
         self.delta_t = delta_t
+        self.delta_skip = delta_skip
 
         # Wideband LSTM: each timestep sees the full antenna-subcarrier map.
         feat_dim = num_bs_antennas * num_subcarriers * 2
@@ -158,7 +160,10 @@ class LSTMMultiModalPredictor(nn.Module):
             hidden_dim=embed_dim * 2,
             dropout=fusion_dropout,
             prediction_horizon=prediction_horizon,
+            delta_skip=delta_skip,
         )
+        if delta_skip:
+            self.head.zero_init_output()
 
     def _encode_channel(self, channel_history: torch.Tensor) -> torch.Tensor:
         """Wideband time-token LSTM encoding.
@@ -304,7 +309,7 @@ class LSTMMultiModalPredictor(nn.Module):
 
         # Step 2: channel_only shortcut
         if self.mode == "channel_only":
-            return self.head(ch_tokens)                       # (B, P, Na, Nsc, 2)
+            return self.head(ch_tokens, last_frame=channel_history[:, -1])                       # (B, P, Na, Nsc, 2)
 
         # Step 3: sensor encoding and time alignment → (B, K, M, D)
         sensor_list = []
@@ -330,7 +335,7 @@ class LSTMMultiModalPredictor(nn.Module):
             fused = block(fused, sensor_tokens, sensor_valid)  # (B, K, 256)
 
         # Step 5: head
-        return self.head(fused)                              # (B, P, Na, Nsc, 2)
+        return self.head(fused, last_frame=channel_history[:, -1])                              # (B, P, Na, Nsc, 2)
 
     def count_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)

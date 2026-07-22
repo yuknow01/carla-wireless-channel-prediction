@@ -126,6 +126,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--num-image-frames", type=int, default=8)
     p.add_argument("--image-stride", type=int, default=1)
     p.add_argument("--no-pretrained-image", action="store_true")
+    p.add_argument(
+        "--delta-skip", action="store_true",
+        help="Predict residual on top of the last input frame (copy-last floor).",
+    )
 
     p.add_argument("--embed-dim", type=int, default=256)
     p.add_argument("--fusion-layers", type=int, default=3)
@@ -221,6 +225,7 @@ def build_model(model_name: str, args: argparse.Namespace) -> nn.Module:
         fusion_layers=args.fusion_layers,
         fusion_heads=args.fusion_heads,
         delta_t=args.delta_t,
+        delta_skip=args.delta_skip,
     )
 
     if model_name == "lstm":
@@ -263,6 +268,7 @@ def build_model(model_name: str, args: argparse.Namespace) -> nn.Module:
             fusion_layers=args.fusion_layers,
             fusion_heads=args.fusion_heads,
             dropout=args.dropout,
+            delta_skip=args.delta_skip,
         )
 
     raise ValueError(f"Unknown model: {model_name}")

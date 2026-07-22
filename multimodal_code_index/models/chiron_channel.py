@@ -299,11 +299,13 @@ class ChannelPredictionHead(nn.Module):
         hidden_dim: int = 1024,
         dropout: float = 0.1,
         prediction_horizon: int = 1,
+        delta_skip: bool = False,
     ):
         super().__init__()
         self.num_antennas = num_antennas
         self.num_subcarriers = num_subcarriers
         self.prediction_horizon = prediction_horizon
+        self.delta_skip = delta_skip
 
         # P learnable queries, one per future step
         self.pool_query = nn.Parameter(torch.zeros(1, prediction_horizon, embed_dim))
@@ -329,15 +331,33 @@ class ChannelPredictionHead(nn.Module):
 
         nn.init.trunc_normal_(self.pool_query, std=0.02)
 
-    def forward(self, tokens: torch.Tensor) -> torch.Tensor:
-        """tokens: (B, K*S, D) -> (B, P, Na, Nsc, 2)"""
+    def zero_init_output(self) -> None:
+        """Zero the final projection so the head starts by predicting delta=0.
+
+        With delta_skip=True this makes the model exactly reproduce the last
+        input frame (copy-last) at initialization.
+        """
+        final = self.mlp[-1]
+        nn.init.zeros_(final.weight)
+        if final.bias is not None:
+            nn.init.zeros_(final.bias)
+
+    def forward(self, tokens: torch.Tensor, last_frame: torch.Tensor | None = None) -> torch.Tensor:
+        """tokens: (B, K*S, D) -> (B, P, Na, Nsc, 2)
+
+        last_frame: (B, Na, Nsc, 2) — when delta_skip is enabled, the MLP
+        output is treated as a residual on top of this frame.
+        """
         B = tokens.size(0)
         P = self.prediction_horizon
         query = self.pool_query.expand(B, -1, -1)  # (B, P, D)
         ctx = self.pool_norm(tokens)
         pooled, _ = self.pool_attn(query, ctx, ctx)  # (B, P, D)
         out = self.mlp(pooled)  # (B, P, Na*Nsc*2)
-        return out.view(B, P, self.num_antennas, self.num_subcarriers, 2)
+        out = out.view(B, P, self.num_antennas, self.num_subcarriers, 2)
+        if self.delta_skip and last_frame is not None:
+            out = out + last_frame.unsqueeze(1)
+        return out
 
 
 # ---------------------------------------------------------------------------
@@ -450,6 +470,14 @@ class ChironChannelPredictor(nn.Module):
         pred : (B, P, Na, Nsc, 2)
             Predicted P future channels in real representation.
         """
+        tokens = self.encode_tokens(channel_history)
+
+        # Head: P learnable queries cross-attend to all K*S tokens
+        # tokens: (B, K*S, D) -> pred: (B, P, Na, Nsc, 2)
+        return self.head(tokens)
+
+    def encode_tokens(self, channel_history: torch.Tensor) -> torch.Tensor:
+        """Backbone encoding without the head: (B,K,Na,Nsc,2) -> (B, K*S, D)."""
         B, K, Na, Nsc, _ = channel_history.shape
         S = self._num_spatial
 
@@ -470,11 +498,7 @@ class ChironChannelPredictor(nn.Module):
         for block in self.blocks:
             tokens = block(tokens, K, S)
 
-        tokens = self.final_norm(tokens)
-
-        # Head: P learnable queries cross-attend to all K*S tokens
-        # tokens: (B, K*S, D) -> pred: (B, P, Na, Nsc, 2)
-        return self.head(tokens)
+        return self.final_norm(tokens)
 
     def count_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
