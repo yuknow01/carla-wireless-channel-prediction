@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from multimodal_fusion_page import render_multimodal_page
+
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "visualizations"
@@ -318,7 +320,13 @@ if(DATA.evidence.curves.length){{const ct=document.getElementById('curveTabs');D
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     for slug, data in MODELS.items():
-        (OUT / f"{slug}.html").write_text(page(slug, data), encoding="utf-8")
+        if slug == "multimodal-fusion":
+            fusion_data = dict(data)
+            fusion_data["evidence"] = evidence_for(slug)
+            html = render_multimodal_page(fusion_data)
+        else:
+            html = page(slug, data)
+        (OUT / f"{slug}.html").write_text(html, encoding="utf-8")
         print(OUT / f"{slug}.html")
 
 

@@ -1,4 +1,56 @@
-<!doctype html>
+#!/usr/bin/env python3
+"""Render the code-faithful multimodal fusion explainer page."""
+
+from __future__ import annotations
+
+import json
+
+
+def _result_rows(data: dict) -> str:
+    rows = []
+    for item in data["evidence"]["campaigns"][0]["rows"]:
+        steps = " / ".join(f"{value:.2f}" for value in item["per_step_db"])
+        rows.append(
+            "<tr>"
+            f"<td><strong>{item['model']}</strong></td>"
+            f"<td>{item['nmse_db']:.2f}</td>"
+            f"<td>{item['median_db']:.2f}</td>"
+            f"<td>{item['copy_db']:.2f}</td>"
+            f"<td>{item['gain_db']:+.2f}</td>"
+            f"<td>{steps}</td>"
+            "</tr>"
+        )
+    return "".join(rows)
+
+
+def _audit_rows(data: dict) -> str:
+    rows = []
+    for name, item in data["evidence"]["controls"].items():
+        rows.append(
+            "<tr>"
+            f"<td><strong>{name}</strong></td>"
+            f"<td>{item['original']:.2f}</td>"
+            f"<td>{item['gate']:.4f}</td>"
+            f"<td>{item['radar_zero']:.2f} / {item['radar_shuffle']:.2f}</td>"
+            f"<td>{item['camera_zero']:.2f} / {item['camera_shuffle']:.2f}</td>"
+            f"<td>{item['lidar_zero']:.2f} / {item['lidar_shuffle']:.2f}</td>"
+            "</tr>"
+        )
+    return "".join(rows)
+
+
+def render_multimodal_page(data: dict) -> str:
+    """Return a standalone HTML page using the experiment evidence in *data*."""
+
+    payload = json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+    return (
+        _TEMPLATE.replace("__DATA__", payload)
+        .replace("__RESULT_ROWS__", _result_rows(data))
+        .replace("__AUDIT_ROWS__", _audit_rows(data))
+    )
+
+
+_TEMPLATE = r"""<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8">
@@ -273,10 +325,10 @@
       <div class="chart"><h3>Validation NMSE · dB ↓</h3><canvas id="nmseChart"></canvas></div>
     </div>
     <h3 style="margin-top:22px">C4 best checkpoint 결과</h3>
-    <div class="table-wrap"><table class="result-table"><thead><tr><th>Model</th><th>Mean NMSE dB ↓</th><th>Median dB ↓</th><th>Copy-last dB</th><th>Gain dB ↑</th><th>50 / 100 / 150 / 200 ms</th></tr></thead><tbody><tr><td><strong>LSTM</strong></td><td>1.75</td><td>-1.01</td><td>2.17</td><td>+0.42</td><td>0.68 / 1.35 / 2.36 / 2.38</td></tr><tr><td><strong>LWM</strong></td><td>1.44</td><td>-1.17</td><td>2.17</td><td>+0.73</td><td>0.17 / 1.05 / 2.08 / 2.16</td></tr><tr><td><strong>DTCN</strong></td><td>1.38</td><td>-1.14</td><td>2.17</td><td>+0.79</td><td>-0.20 / 1.17 / 1.97 / 2.19</td></tr><tr><td><strong>EGRP-LWM</strong></td><td>1.43</td><td>-1.03</td><td>2.17</td><td>+0.74</td><td>0.14 / 1.08 / 2.05 / 2.15</td></tr></tbody></table></div>
+    <div class="table-wrap"><table class="result-table"><thead><tr><th>Model</th><th>Mean NMSE dB ↓</th><th>Median dB ↓</th><th>Copy-last dB</th><th>Gain dB ↑</th><th>50 / 100 / 150 / 200 ms</th></tr></thead><tbody>__RESULT_ROWS__</tbody></table></div>
     <div class="callout orange"><strong>모델 성능과 센서 기여는 다른 질문입니다.</strong> DTCN full의 1.38 dB가 가장 낮지만, 이것만으로 Camera·Radar·LiDAR 덕분이라고 말할 수 없습니다. 같은 입력을 zero 또는 sample shuffle해 성능이 무너지는지 확인해야 합니다.</div>
     <h3 style="margin-top:22px">Zero / Shuffle 인과 audit</h3>
-    <div class="table-wrap"><table class="result-table"><thead><tr><th>Model</th><th>Original</th><th>Gate</th><th>Radar Zero / Shuffle</th><th>Camera Zero / Shuffle</th><th>LiDAR Zero / Shuffle</th></tr></thead><tbody><tr><td><strong>LSTM</strong></td><td>1.75</td><td>-0.0003</td><td>1.75 / 1.75</td><td>1.75 / 1.75</td><td>1.75 / 1.75</td></tr><tr><td><strong>LWM</strong></td><td>1.44</td><td>0.0011</td><td>1.44 / 1.44</td><td>1.44 / 1.44</td><td>1.44 / 1.44</td></tr><tr><td><strong>DTCN</strong></td><td>1.38</td><td>-0.0009</td><td>1.38 / 1.38</td><td>1.38 / 1.38</td><td>1.38 / 1.38</td></tr><tr><td><strong>EGRP-LWM</strong></td><td>1.43</td><td>0.6779</td><td>1.43 / 1.43</td><td>1.43 / 1.43</td><td>1.43 / 1.43</td></tr></tbody></table></div>
+    <div class="table-wrap"><table class="result-table"><thead><tr><th>Model</th><th>Original</th><th>Gate</th><th>Radar Zero / Shuffle</th><th>Camera Zero / Shuffle</th><th>LiDAR Zero / Shuffle</th></tr></thead><tbody>__AUDIT_ROWS__</tbody></table></div>
     <div class="callout red"><strong>현재 확인된 결과:</strong> Original = Zero = Shuffle로 사실상 동일합니다. 기본 GatedFusion의 gate도 0 부근에 머물렀습니다. 따라서 이 C4 결과에서 성능 향상은 channel backbone이 만들었으며, 센서 내용의 추가 이득은 입증되지 않았습니다. EGRP gate가 0이 아니어도 audit 결과가 같으므로 “gate가 열렸다”와 “센서 내용이 유효했다”는 같은 말이 아닙니다.</div>
   </section>
 
@@ -303,7 +355,7 @@
   <footer>CARLA · Sionna RT · Multimodal Wireless Channel Forecasting · generated from the experiment source of record</footer>
 </main>
 <script>
-const DATA={"title": "Multimodal · GatedFusion / EGRP / MLLM", "subtitle": "채널 backbone의 시간 토큰을 query로, BS camera·Radar·LiDAR 토큰을 key/value로 사용해 미래 복소수 CSI를 예측합니다.", "accent": "#5f8dff", "input": "CSI + W=5 sensors", "output": "(B,4,16,64,2)", "facts": [["15", "full sensor tokens"], ["128", "sensor width"], ["g=0", "gate initialization"], ["Target A", "final CSI output"]], "stages": [["Channel backbone", "(B,K,D)", "LSTM/LWM/DTCN은 D=256, Mamba는 128, Chiron은 K×S=128 tokens와 D=256을 사용합니다."], ["Sensor inputs", "W=5 per modality", "Radar (B,5,2,16,16), BS camera (B,5,3,64,64), LiDAR (B,5,1,16,16)입니다."], ["FrameCNN", "각 modality (B,5,128)", "모달리티별 CNN이 해상도가 다른 센서 프레임을 동일한 128차원 토큰으로 바꿉니다."], ["Cross-attention", "Q=channel · K/V=sensors", "Full 조건에서는 15개 센서 토큰을 concatenate하고 channel 차원 D로 projection합니다."], ["Gate", "z′=z+g·Norm(att)", "GatedFusion은 학습 scalar g, EGRP는 샘플별 onset 확률을 사용합니다."], ["CSI head", "(B,4,16,64,2)", "융합된 channel token으로 ΔH를 만들고 마지막 관측 CSI에 더합니다."]], "kind": "fusion", "interaction_text": "gate를 움직여 sensor residual이 channel token에 얼마나 주입되는지 확인하고, 모델 탭에서 GatedFusion·EGRP·MLLM 차이를 비교합니다.", "notes": [["최종 타깃", "멀티모달 모델의 최종 출력은 Target A인 미래 복소수 CSI입니다."], ["EGRP의 보조 타깃", "Frozen radar onset head의 Target B 확률은 센서 주입 gate를 만들기 위한 보조 신호입니다."], ["인과 검증", "Original 성능만으로 센서 이득을 주장하지 않고 Zero·Shuffle에서 개선이 사라지는지 확인해야 합니다."]], "rows": [["Sensor window", "W=5 at 10 ms spacing"], ["Sensor encoders", "FrameCNN · output 128"], ["Fusion", "4-head cross-attention · dropout 0.1"], ["Regularization", "modality dropout 0.15"], ["GatedFusion", "scalar gate initialized to 0"], ["EGRP", "α·sigmoid(frozen radar onset logit)"]], "evidence": {"focus": null, "campaigns": [{"id": "c4", "title": "C4 · BS-camera full-fusion development validation", "protocol": "Same 6/2 seed split as C2 · BS camera · 30 epochs · 50–200 ms. Development validation; no independent test.", "rows": [{"model": "LSTM", "nmse_db": 1.75, "median_db": -1.01, "per_step_db": [0.68, 1.35, 2.36, 2.38], "copy_db": 2.17, "copy_median_db": -0.91, "gain_db": 0.42, "n": 11620, "gate": -0.0003}, {"model": "LWM", "nmse_db": 1.44, "median_db": -1.17, "per_step_db": [0.17, 1.05, 2.08, 2.16], "copy_db": 2.17, "copy_median_db": -0.91, "gain_db": 0.73, "n": 11620, "gate": 0.0011}, {"model": "DTCN", "nmse_db": 1.38, "median_db": -1.14, "per_step_db": [-0.2, 1.17, 1.97, 2.19], "copy_db": 2.17, "copy_median_db": -0.91, "gain_db": 0.79, "n": 11620, "gate": -0.0009}, {"model": "EGRP-LWM", "nmse_db": 1.43, "median_db": -1.03, "per_step_db": [0.14, 1.08, 2.05, 2.15], "copy_db": 2.17, "copy_median_db": -0.91, "gain_db": 0.74, "n": 11620, "gate": 0.6779}]}], "curves": [{"label": "LSTM full", "protocol": "C4 · BS-camera full fusion · 50–200 ms · development validation", "epochs": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30], "train_loss": [2.00968, 1.95758, 1.92128, 1.85139, 1.76095, 1.66254, 1.57154, 1.50739, 1.46048, 1.41726, 1.3812, 1.34418, 1.31001, 1.28266, 1.24903, 1.22344, 1.19694, 1.17396, 1.15596, 1.1307, 1.11565, 1.09964, 1.08651, 1.06958, 1.05888, 1.04828, 1.03897, 1.02792, 1.01916, 1.01026], "val_loss": [2.58936, 2.59567, 2.59724, 2.59361, 2.58494, 2.58331, 2.62803, 2.61352, 2.63435, 2.61367, 2.62587, 2.61703, 2.62189, 2.60505, 2.56983, 2.57134, 2.60643, 2.59633, 2.60684, 2.59761, 2.61741, 2.62646, 2.6331, 2.63813, 2.62434, 2.62539, 2.62216, 2.63372, 2.62133, 2.61731], "val_nmse_db": [2.14, 2.18, 2.19, 2.06, 1.96, 1.89, 1.93, 1.86, 1.91, 1.86, 1.87, 1.85, 1.89, 1.83, 1.75, 1.75, 1.88, 1.86, 1.9, 1.88, 1.92, 1.95, 1.99, 2.0, 1.95, 1.96, 1.97, 2.0, 1.92, 1.91], "val_near_db": [8.33, 8.37, 8.39, 8.35, 8.29, 8.28, 8.25, 8.23, 8.24, 8.26, 8.31, 8.27, 8.34, 8.24, 8.25, 8.21, 8.31, 8.28, 8.33, 8.32, 8.32, 8.3, 8.3, 8.28, 8.27, 8.29, 8.27, 8.36, 8.36, 8.31]}, {"label": "LWM full", "protocol": "C4 · BS-camera full fusion · 50–200 ms · development validation", "epochs": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30], "train_loss": [2.03599, 1.94406, 1.87007, 1.79885, 1.74446, 1.68937, 1.63107, 1.5718, 1.52186, 1.48336, 1.45409, 1.41844, 1.39243, 1.36741, 1.3428, 1.31999, 1.29782, 1.28151, 1.26345, 1.24706, 1.2326, 1.2149, 1.20334, 1.19182, 1.18295, 1.17245, 1.16122, 1.15116, 1.13781, 1.1291], "val_loss": [2.56797, 2.54236, 2.53304, 2.48505, 2.46936, 2.47215, 2.49812, 2.49999, 2.49739, 2.50093, 2.52025, 2.48759, 2.49273, 2.47598, 2.48862, 2.51255, 2.45041, 2.47063, 2.49235, 2.50111, 2.47475, 2.4566, 2.50482, 2.49588, 2.48241, 2.53845, 2.48506, 2.50563, 2.49954, 2.50482], "val_nmse_db": [2.05, 1.83, 1.69, 1.51, 1.51, 1.48, 1.57, 1.54, 1.54, 1.57, 1.6, 1.56, 1.55, 1.45, 1.52, 1.6, 1.44, 1.46, 1.55, 1.55, 1.51, 1.45, 1.59, 1.57, 1.53, 1.69, 1.57, 1.62, 1.55, 1.63], "val_near_db": [8.34, 8.23, 8.11, 8.03, 8.08, 8.02, 8.0, 8.02, 7.99, 8.0, 8.05, 7.96, 8.04, 7.96, 8.02, 8.01, 7.98, 7.94, 8.05, 8.02, 8.01, 8.0, 8.08, 8.07, 8.13, 8.07, 8.13, 8.09, 8.02, 8.1]}, {"label": "DTCN full", "protocol": "C4 · BS-camera full fusion · 50–200 ms · development validation", "epochs": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30], "train_loss": [1.98747, 1.86678, 1.77428, 1.66827, 1.53898, 1.44261, 1.36247, 1.30804, 1.25149, 1.20125, 1.16185, 1.12462, 1.0866, 1.05484, 1.02074, 0.99438, 0.97153, 0.95008, 0.93375, 0.91292, 0.89658, 0.88077, 0.86727, 0.8513, 0.84129, 0.83046, 0.81657, 0.80667, 0.79149, 0.78284], "val_loss": [2.53428, 2.5192, 2.52972, 2.4943, 2.47223, 2.42413, 2.42621, 2.42011, 2.42693, 2.40445, 2.41272, 2.42764, 2.41287, 2.41879, 2.41721, 2.43735, 2.43517, 2.43345, 2.44474, 2.45408, 2.4714, 2.46375, 2.46564, 2.43423, 2.4719, 2.48769, 2.46045, 2.44011, 2.47073, 2.49595], "val_nmse_db": [1.96, 1.86, 1.9, 1.68, 1.56, 1.4, 1.41, 1.39, 1.52, 1.38, 1.46, 1.47, 1.49, 1.5, 1.48, 1.63, 1.54, 1.51, 1.58, 1.65, 1.72, 1.65, 1.61, 1.57, 1.68, 1.79, 1.74, 1.66, 1.74, 1.9], "val_near_db": [8.18, 8.17, 8.18, 8.14, 7.99, 7.97, 7.96, 8.03, 8.21, 8.11, 8.24, 8.16, 8.32, 8.4, 8.34, 8.54, 8.25, 8.18, 8.42, 8.35, 8.51, 8.34, 8.28, 8.38, 8.44, 8.66, 8.68, 8.67, 8.66, 8.81]}, {"label": "EGRP-LWM full", "protocol": "C4 · BS-camera full fusion · 50–200 ms · development validation", "epochs": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30], "train_loss": [2.0451, 1.97352, 1.90028, 1.83237, 1.77007, 1.7185, 1.66507, 1.6107, 1.55861, 1.51734, 1.47889, 1.45117, 1.42048, 1.39266, 1.36719, 1.34776, 1.32157, 1.30546, 1.28796, 1.27304, 1.25573, 1.24236, 1.22468, 1.21203, 1.19716, 1.19125, 1.17523, 1.16671, 1.15749, 1.14587], "val_loss": [2.56729, 2.54893, 2.55458, 2.53316, 2.47696, 2.46384, 2.475, 2.48086, 2.47695, 2.47845, 2.51276, 2.48513, 2.48416, 2.51113, 2.50094, 2.47633, 2.50983, 2.49707, 2.4813, 2.47601, 2.49386, 2.51577, 2.51023, 2.48328, 2.50456, 2.49105, 2.4934, 2.49884, 2.51096, 2.51115], "val_nmse_db": [2.0, 1.88, 1.87, 1.71, 1.53, 1.47, 1.51, 1.5, 1.47, 1.45, 1.57, 1.47, 1.43, 1.52, 1.5, 1.44, 1.51, 1.48, 1.43, 1.46, 1.51, 1.6, 1.56, 1.45, 1.57, 1.52, 1.5, 1.5, 1.56, 1.53], "val_near_db": [8.29, 8.26, 8.21, 8.1, 8.11, 8.08, 8.09, 8.02, 7.99, 8.0, 8.11, 8.04, 8.02, 8.06, 8.07, 8.07, 8.07, 8.04, 8.03, 8.1, 8.12, 8.08, 8.11, 8.09, 8.13, 8.06, 8.1, 8.03, 8.05, 8.06]}], "controls": {"LSTM": {"original": 1.75, "gate": -0.0003, "radar_zero": 1.75, "radar_shuffle": 1.75, "camera_zero": 1.75, "camera_shuffle": 1.75, "lidar_zero": 1.75, "lidar_shuffle": 1.75}, "LWM": {"original": 1.44, "gate": 0.0011, "radar_zero": 1.44, "radar_shuffle": 1.44, "camera_zero": 1.44, "camera_shuffle": 1.44, "lidar_zero": 1.44, "lidar_shuffle": 1.44}, "DTCN": {"original": 1.38, "gate": -0.0009, "radar_zero": 1.38, "radar_shuffle": 1.38, "camera_zero": 1.38, "camera_shuffle": 1.38, "lidar_zero": 1.38, "lidar_shuffle": 1.38}, "EGRP-LWM": {"original": 1.43, "gate": 0.6779, "radar_zero": 1.43, "radar_shuffle": 1.43, "camera_zero": 1.43, "camera_shuffle": 1.43, "lidar_zero": 1.43, "lidar_shuffle": 1.43}}}};
+const DATA=__DATA__;
 
 const ARCH={
   gated:{
@@ -392,3 +444,4 @@ selectCurve(0);window.addEventListener('resize',()=>selectCurve(selectedCurve));
 </script>
 </body>
 </html>
+"""
