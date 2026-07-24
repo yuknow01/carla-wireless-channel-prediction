@@ -110,6 +110,14 @@ _TEMPLATE = r"""<!doctype html>
     .arch-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
     button{border:1px solid var(--line);border-radius:9px;background:#102943;color:var(--text);font-weight:820;padding:9px 13px;cursor:pointer}
     button:hover,button.active{border-color:var(--cyan);color:var(--cyan)}
+    .all-arch{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px}
+    .all-arch-card{border:1px solid var(--line);border-top:3px solid var(--arch);border-radius:14px;background:#071421;padding:16px}
+    .all-arch-card .arch-label{font:900 11px ui-monospace,monospace;color:var(--arch);letter-spacing:.08em}
+    .all-arch-card h3{margin:7px 0 6px}.all-arch-card>p{color:var(--muted);font-size:12px;line-height:1.55;min-height:57px}
+    .overview-flow{display:grid;gap:6px;margin-top:13px}.overview-step{position:relative;border:1px solid color-mix(in srgb,var(--arch) 38%,var(--line));border-radius:9px;background:#0b1b2c;padding:9px 10px}
+    .overview-step:not(:last-child):after{content:"↓";position:absolute;bottom:-15px;left:50%;z-index:2;color:var(--arch);font-weight:900}
+    .overview-step b{display:block;font-size:12px}.overview-step code{display:block;color:var(--arch);font-size:10px;line-height:1.45;margin-top:3px}
+    .expand-title{display:flex;align-items:center;gap:10px;margin:4px 0 12px}.expand-title:after{content:"";height:1px;flex:1;background:var(--line)}
     .arch-summary{display:grid;grid-template-columns:.76fr 1.24fr;gap:14px}
     .read-card{background:#071421;border:1px solid var(--line);border-radius:13px;padding:17px}
     .read-card .big{font-size:23px;font-weight:900;color:var(--accent,var(--cyan));margin:9px 0}
@@ -152,7 +160,7 @@ _TEMPLATE = r"""<!doctype html>
     footer{margin-top:24px;color:#72889f;font-size:12px;text-align:center}
     @media(max-width:960px){
       .hero,.arch-summary,.interactive-grid{grid-template-columns:1fr}.facts{grid-template-columns:repeat(3,1fr)}
-      .grid3,.status-grid,.chart-grid{grid-template-columns:1fr}.arch-flow{grid-template-columns:1fr}.arch-box:after{content:"↓";right:auto;left:49%;top:auto;bottom:-18px}
+      .grid3,.status-grid,.chart-grid{grid-template-columns:1fr}.all-arch{grid-template-columns:1fr}.all-arch-card>p{min-height:0}.arch-flow{grid-template-columns:1fr}.arch-box:after{content:"↓";right:auto;left:49%;top:auto;bottom:-18px}
       .target-flow,.gate-viz{grid-template-columns:1fr}.target-flow>.arr,.gate-viz>.plus{transform:rotate(90deg)}
       .cnn{grid-template-columns:1fr}.cnn>.arr{transform:rotate(90deg)}.box{min-width:0}
     }
@@ -220,7 +228,43 @@ _TEMPLATE = r"""<!doctype html>
   </section>
 
   <section class="card" id="map">
-    <div class="section-head"><div><div class="section-no">02 · ARCHITECTURE MAP</div><h2>먼저 큰 흐름을 선택해서 보기</h2><p>버튼을 누르면 해당 구조의 핵심 질문, 융합 연산, tensor 흐름이 바뀝니다.</p></div></div>
+    <div class="section-head"><div><div class="section-no">02 · ARCHITECTURE MAP</div><h2>세 가지 fusion 구조를 한 화면에서 비교</h2><p>GatedFusion, EGRP, MLLM-B의 입력부터 미래 CSI 출력까지를 동시에 표시했습니다. 아래 확대 보기에서는 버튼을 눌러 각 tensor 흐름을 더 자세히 볼 수 있습니다.</p></div></div>
+    <div class="all-arch">
+      <article class="all-arch-card" style="--arch:var(--orange)">
+        <div class="arch-label">MODEL 1 · BASELINE FUSION</div><h3>GatedFusion</h3>
+        <p>Channel-to-sensor cross-attention을 하나의 학습 scalar gate로 조절합니다.</p>
+        <div class="overview-flow">
+          <div class="overview-step"><b>CSI + Sensors</b><code>CSI K=16 · sensor 5×modalities</code></div>
+          <div class="overview-step"><b>Backbone + FrameCNN</b><code>channel (B,K,D) · sensor (B,15,128)</code></div>
+          <div class="overview-step"><b>Cross-attention</b><code>Q=channel · K/V=sensor</code></div>
+          <div class="overview-step"><b>Global scalar gate</b><code>z′ = z + g·LN(att), g init 0</code></div>
+          <div class="overview-step"><b>P=4 residual head</b><code>Ŷ = Hlast + ΔĤ</code></div>
+        </div>
+      </article>
+      <article class="all-arch-card" style="--arch:var(--cyan)">
+        <div class="arch-label">MODEL 2 · EVENT-GUIDED FUSION</div><h3>EGRP</h3>
+        <p>GatedFusion의 scalar를 frozen onset predictor가 만든 샘플별 차폐 확률 gate로 바꿉니다.</p>
+        <div class="overview-flow">
+          <div class="overview-step"><b>CSI + Sensors</b><code>Target A inputs + Target B sensor window</code></div>
+          <div class="overview-step"><b>Backbone + FrameCNN</b><code>channel z · sensor KV</code></div>
+          <div class="overview-step"><b>Cross-attention</b><code>att = MHA(z, sensor, sensor)</code></div>
+          <div class="overview-step"><b>Per-sample event gate</b><code>gᵢ = α·sigmoid(onset logitᵢ)</code></div>
+          <div class="overview-step"><b>P=4 residual head</b><code>z′ → ΔĤ → future CSI</code></div>
+        </div>
+      </article>
+      <article class="all-arch-card" style="--arch:var(--purple)">
+        <div class="arch-label">MODEL 3 · TOKEN FUSION</div><h3>MLLM-B</h3>
+        <p>센서와 CSI를 31개 token sequence로 연결하고 frozen GPT-2의 causal self-attention으로 융합합니다.</p>
+        <div class="overview-flow">
+          <div class="overview-step"><b>CSI + Sensors</b><code>CSI 16 · sensor 15 tokens</code></div>
+          <div class="overview-step"><b>LWM + FrameCNN</b><code>all modalities → d768</code></div>
+          <div class="overview-step"><b>Token concatenation</b><code>[R₁…R₅,C₁…C₅,L₁…L₅,H₁…H₁₆]</code></div>
+          <div class="overview-step"><b>Frozen GPT-2 ×12</b><code>causal self-attention · no event gate</code></div>
+          <div class="overview-step"><b>P=4 residual head</b><code>Ŷ = Hlast + ΔĤ</code></div>
+        </div>
+      </article>
+    </div>
+    <h3 class="expand-title">선택한 구조 확대 보기</h3>
     <div class="arch-tabs" id="archTabs"></div>
     <div class="arch-summary">
       <div class="read-card" id="archRead"></div>
