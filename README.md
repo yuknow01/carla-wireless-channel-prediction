@@ -30,7 +30,7 @@ Training commands and smoke checks are archived in [docs_archive/EXPERIMENTS.md]
 - [Mamba selective state-space backbone](https://yuknow01.github.io/carla-wireless-channel-prediction/visualizations/mamba.html)
 - [DTCN frequency/delay causal TCN](https://yuknow01.github.io/carla-wireless-channel-prediction/visualizations/dtcn.html)
 - [Chiron factorized spatio-temporal model](https://yuknow01.github.io/carla-wireless-channel-prediction/visualizations/chiron.html)
-- [Multimodal GatedFusion, EGRP, and MLLM](https://yuknow01.github.io/carla-wireless-channel-prediction/visualizations/multimodal-fusion.html)
+- [Multimodal EGRP and MLLM-B (GatedFusion baseline included)](https://yuknow01.github.io/carla-wireless-channel-prediction/visualizations/multimodal-fusion.html)
 - [Channel phase and multipath interference](https://yuknow01.github.io/carla-wireless-channel-prediction/visualizations/channel-phase-interference.html)
 
 ## Pipeline Overview

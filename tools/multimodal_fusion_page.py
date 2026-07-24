@@ -110,7 +110,7 @@ _TEMPLATE = r"""<!doctype html>
     .arch-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
     button{border:1px solid var(--line);border-radius:9px;background:#102943;color:var(--text);font-weight:820;padding:9px 13px;cursor:pointer}
     button:hover,button.active{border-color:var(--cyan);color:var(--cyan)}
-    .all-arch{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px}
+    .all-arch{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:14px}
     .all-arch-card{border:1px solid var(--line);border-top:3px solid var(--arch);border-radius:14px;background:#071421;padding:16px}
     .all-arch-card .arch-label{font:900 11px ui-monospace,monospace;color:var(--arch);letter-spacing:.08em}
     .all-arch-card h3{margin:7px 0 6px}.all-arch-card>p{color:var(--muted);font-size:12px;line-height:1.55;min-height:57px}
@@ -228,21 +228,10 @@ _TEMPLATE = r"""<!doctype html>
   </section>
 
   <section class="card" id="map">
-    <div class="section-head"><div><div class="section-no">02 · ARCHITECTURE MAP</div><h2>세 가지 fusion 구조를 한 화면에서 비교</h2><p>GatedFusion, EGRP, MLLM-B의 입력부터 미래 CSI 출력까지를 동시에 표시했습니다. 아래 확대 보기에서는 버튼을 눌러 각 tensor 흐름을 더 자세히 볼 수 있습니다.</p></div></div>
+    <div class="section-head"><div><div class="section-no">02 · ARCHITECTURE MAP</div><h2>두 가지 핵심 fusion 구조를 한 화면에서 비교</h2><p>EGRP와 MLLM-B의 입력부터 미래 CSI 출력까지를 동시에 표시했습니다. 아래 확대 보기에서는 버튼을 눌러 각 tensor 흐름을 더 자세히 볼 수 있습니다.</p></div></div>
     <div class="all-arch">
-      <article class="all-arch-card" style="--arch:var(--orange)">
-        <div class="arch-label">MODEL 1 · BASELINE FUSION</div><h3>GatedFusion</h3>
-        <p>Channel-to-sensor cross-attention을 하나의 학습 scalar gate로 조절합니다.</p>
-        <div class="overview-flow">
-          <div class="overview-step"><b>CSI + Sensors</b><code>CSI K=16 · sensor 5×modalities</code></div>
-          <div class="overview-step"><b>Backbone + FrameCNN</b><code>channel (B,K,D) · sensor (B,15,128)</code></div>
-          <div class="overview-step"><b>Cross-attention</b><code>Q=channel · K/V=sensor</code></div>
-          <div class="overview-step"><b>Global scalar gate</b><code>z′ = z + g·LN(att), g init 0</code></div>
-          <div class="overview-step"><b>P=4 residual head</b><code>Ŷ = Hlast + ΔĤ</code></div>
-        </div>
-      </article>
       <article class="all-arch-card" style="--arch:var(--cyan)">
-        <div class="arch-label">MODEL 2 · EVENT-GUIDED FUSION</div><h3>EGRP</h3>
+        <div class="arch-label">MODEL 1 · EVENT-GUIDED FUSION</div><h3>EGRP</h3>
         <p>GatedFusion의 scalar를 frozen onset predictor가 만든 샘플별 차폐 확률 gate로 바꿉니다.</p>
         <div class="overview-flow">
           <div class="overview-step"><b>CSI + Sensors</b><code>Target A inputs + Target B sensor window</code></div>
@@ -253,7 +242,7 @@ _TEMPLATE = r"""<!doctype html>
         </div>
       </article>
       <article class="all-arch-card" style="--arch:var(--purple)">
-        <div class="arch-label">MODEL 3 · TOKEN FUSION</div><h3>MLLM-B</h3>
+        <div class="arch-label">MODEL 2 · TOKEN FUSION</div><h3>MLLM-B</h3>
         <p>센서와 CSI를 31개 token sequence로 연결하고 frozen GPT-2의 causal self-attention으로 융합합니다.</p>
         <div class="overview-flow">
           <div class="overview-step"><b>CSI + Sensors</b><code>CSI 16 · sensor 15 tokens</code></div>
@@ -264,6 +253,7 @@ _TEMPLATE = r"""<!doctype html>
         </div>
       </article>
     </div>
+    <div class="callout orange"><strong>GatedFusion의 위치:</strong> 세 번째 핵심 모델이 아니라 EGRP의 기반이 되는 baseline/ablation입니다. EGRP는 GatedFusion의 channel-to-sensor cross-attention을 그대로 사용하면서, 전역 scalar gate를 Target B onset 확률 기반의 샘플별 gate로 교체한 구조입니다.</div>
     <h3 class="expand-title">선택한 구조 확대 보기</h3>
     <div class="arch-tabs" id="archTabs"></div>
     <div class="arch-summary">
@@ -379,7 +369,7 @@ _TEMPLATE = r"""<!doctype html>
   <section class="card" id="status">
     <div class="section-head"><div><div class="section-no">08 · EXPERIMENT STATUS</div><h2>구현됨과 현재 근거를 구분</h2><p>코드에 모델이 존재한다는 사실과 동일한 데이터·분할·학습 조건에서 비교가 끝났다는 사실은 구분해야 합니다.</p></div></div>
     <div class="status-grid">
-      <article class="status"><span class="pill live">IMPLEMENTED + CURRENT</span><h3>GatedFusion / EGRP</h3><p>BS Camera·Radar·LiDAR를 사용하는 C4 50–200 ms 결과와 Zero/Shuffle audit가 저장돼 있습니다.</p></article>
+      <article class="status"><span class="pill live">IMPLEMENTED + CURRENT</span><h3>EGRP 계열</h3><p>GatedFusion baseline을 포함해 BS Camera·Radar·LiDAR를 사용하는 C4 50–200 ms 결과와 Zero/Shuffle audit가 저장돼 있습니다.</p></article>
       <article class="status"><span class="pill legacy">IMPLEMENTED + LEGACY RUN</span><h3>MLLM-A / MLLM-B</h3><p>구조와 과거 실행 결과는 존재하지만, 현재 BS-camera C4 프로토콜에서 GatedFusion/EGRP와 matched rerun한 결과는 아닙니다.</p></article>
       <article class="status"><span class="pill">NEXT FAIR TEST</span><h3>동일 조건 비교</h3><p>같은 seed split, sensor source, initialization, epoch에서 EGRP vs MLLM-B를 비교하고 각 센서 Zero/Shuffle을 반복해야 융합 방식의 차이를 주장할 수 있습니다.</p></article>
     </div>
@@ -402,12 +392,6 @@ _TEMPLATE = r"""<!doctype html>
 const DATA=__DATA__;
 
 const ARCH={
-  gated:{
-    label:'GatedFusion',accent:'#ffad5c',question:'센서 residual이 정말 필요한가?',
-    answer:'학습 가능한 scalar g 하나로 전체 sensor attention을 조절',
-    desc:'g=0으로 시작하므로 초기 모델은 channel-only입니다. 데이터가 센서의 필요성을 학습하면 하나의 전역 gate가 열립니다.',
-    flow:[['Channel backbone','(B,K,D)'],['FrameCNN × sensors','(B,15,128)'],['Cross-attention','Q=channel · KV=sensor'],['Scalar gate','z + g·LN(att)'],['P=4 CSI head','(B,4,16,64,2)']]
-  },
   egrp:{
     label:'EGRP',accent:'#3dd9eb',question:'차폐가 다가오는 샘플에서만 센서를 더 쓸 수 있는가?',
     answer:'Frozen onset probability로 sample별 cross-attention gate 생성',

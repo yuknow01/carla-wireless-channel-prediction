@@ -141,8 +141,8 @@ MODELS = {
         "rows": [("Patch", "4 antennas × 32 subcarriers × Re/Im"), ("Embedding", "256 values → d256"), ("Core", "temporal + spatial + gated FFN ×6"), ("Heads / conv", "4 heads · temporal kernel 7"), ("Prediction head", "P=4 queries · MLP hidden 1024")],
     },
     "multimodal-fusion": {
-        "title": "Multimodal · GatedFusion / EGRP / MLLM",
-        "subtitle": "채널 backbone의 시간 토큰을 query로, BS camera·Radar·LiDAR 토큰을 key/value로 사용해 미래 복소수 CSI를 예측합니다.",
+        "title": "Multimodal · EGRP vs MLLM-B",
+        "subtitle": "EGRP의 event-gated cross-attention과 MLLM-B의 token-concat GPT-2 fusion으로 미래 복소수 CSI를 예측합니다.",
         "accent": "#5f8dff",
         "input": "CSI + W=5 sensors", "output": "(B,4,16,64,2)",
         "facts": [("15", "full sensor tokens"), ("128", "sensor width"), ("g=0", "gate initialization"), ("Target A", "final CSI output")],
