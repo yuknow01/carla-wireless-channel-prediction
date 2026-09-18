@@ -20,6 +20,211 @@ X [B,16,64,64,2] → chiron 백본 몸통 (patch 4×32 → ChironBlock ×6 → f
                                    ChannelPredictionHead (학습 질의 4 → 512 토큰 cross-attn → MLP 256→1024→1024→8192) → Ŷ [B,4,64,64,2]
 ```
 
+## 구조 도식 (코드 기준 · 실측 shape · B = 배치)
+
+분해 순서는 2026-09-18 미팅 자료(`9월 18일 미팅_v2.pptx` 2~10장)와 같다. 모든 shape·파라미터 수는 `probe/13_probe_multimodal_cp.json` 과 CPU 프로브로 확인한 값이다.
+실선 박스 = 학습 파라미터 있음, 점선 박스 = 동결 사전학습 또는 파라미터 없는 전처리.
+
+### 0. 전체 흐름
+
+```mermaid
+flowchart TD
+  X["채널 이력 X [B,16,64,64,2]<br/>(창별 RMS 정규화)"] --> PE
+  subgraph BB["채널 백본 몸통 — ChironChannelPredictor 원본, 무수정 (9,178,368)"]
+    direction TB
+    PE["PatchEmbed2D<br/>프레임당 4×32 패치 32개 → [B·16,32,256]"] --> POS["+ temporal_pos [1,16,1,256]<br/>+ spatial_pos [1,1,32,256]"]
+    POS --> FL["flatten → [B,512,256]"] --> CB["ChironBlock ×6<br/>Temporal → Spatial → GatedFFN"] --> FN["final_norm LayerNorm"]
+  end
+  FN --> CT["채널 토큰 [B,512,256]"]
+  subgraph SEN["센서 브랜치 — 프레임별 인코더 (학습됨)"]
+    direction TB
+    C["cam 캐시 [B,16,196,768]"] --> CE["QueryPool 질의 1<br/>→ [B,16,1,256]"]
+    L["lidar 캐시 [B,16,64,384]"] --> LE["QueryPool 질의 16<br/>→ [B,16,16,256]"]
+    R["radar 캐시 [B,16,2,64,64]"] --> RE["RadarCNN<br/>→ [B,16,1,256]"]
+    P["pos 캐시 [B,16,10]"] --> PM["PosMLP<br/>→ [B,16,1,256]"]
+  end
+  CE & LE & RE & PM --> ASM["+ modal_emb → 프레임 내 cat (19 토큰)<br/>+ frame_emb → flatten<br/>센서 토큰 [B,304,256]"]
+  CT -->|"query (512)"| FU["GatedXAttnBlock ×3 (3,554,304)<br/>x + σ(gate) ⊙ CrossAttn(x, s) → GatedFFN<br/>gate · out_proj · w3 = 0 초기화 → 초기 항등"]
+  ASM -->|"key · value (3층 동일)"| FU
+  FU --> FT["fused channel tokens [B,512,256]<br/>토큰 개수·자리 유지"]
+  FT --> HD["ChannelPredictionHead 원본 (9,978,368)<br/>학습 질의 4 ↔ 512 토큰 cross-attn → MLP 256→1024→1024→8192"]
+  HD --> Y["Ŷ [B,4,64,64,2]"]
+```
+
+### 1. 채널 백본 (`backbone/chiron_channel.py`)
+
+#### 1.1 PatchEmbed2D — 프레임 1개 → 패치 토큰 32개
+
+```mermaid
+flowchart LR
+  F["프레임 1개<br/>[64 안테나, 64 부반송파, 2]"] --> V["view → 격자 16×2<br/>패치 = 4 안테나 × 32 부반송파 × 2"]
+  V --> FL["패치 32개 각각 flatten<br/>4·32·2 = 256 값"] --> LIN["Linear 256→256"] --> LN["LayerNorm(256)"] --> G["GELU"] --> O["[32 패치, 256]<br/>66,304 params"]
+```
+
+16 프레임을 배치로 붙여 `[B·16,64,64,2] → [B·16,32,256]` 으로 한 번에 처리한다.
+
+#### 1.2 위치 임베딩 → 512 토큰 시퀀스
+
+```mermaid
+flowchart LR
+  T["패치 토큰 [B,16,32,256]"] --> TP["+ temporal_pos[:, :16] [1,16,1,256]<br/>프레임 k 의 32 패치 전부에 같은 벡터 (4,096)"]
+  TP --> SP["+ spatial_pos [1,1,32,256]<br/>패치 s 의 16 프레임 전부에 같은 벡터 (8,192)"]
+  SP --> FLT["reshape → [B, 16·32 = 512, 256]<br/>토큰 j = 프레임 j // 32, 패치 j % 32"]
+```
+
+#### 1.3 ChironBlock ×6 — 블록 하나의 순서
+
+```mermaid
+flowchart LR
+  I["[B,512,256]"] --> TB["TemporalBlock<br/>패치별 시간축 16<br/>463,616"] --> SB["SpatialBlock<br/>프레임별 패치축 32<br/>263,680"] --> FF["GatedFFN<br/>토큰별 SwiGLU<br/>789,248"] --> O["[B,512,256]<br/>블록 합 1,516,544"]
+```
+
+6층 합 9,099,264 + PatchEmbed 66,304 + 위치 12,288 + final_norm 512 = 백본 몸통 9,178,368.
+
+#### 1.4 TemporalBlock — 게이트 conv(국소) + self-attention(전역), 잔차 2회
+
+```mermaid
+flowchart TD
+  I["[B,512,256] → view/permute → [B·32, 16, 256]<br/>패치 하나의 16프레임 시퀀스가 배치 항목"] --> C0
+  subgraph CONV["_conv — 게이트 depthwise conv (199,936)"]
+    direction TB
+    C0["conv_norm LayerNorm"] --> C1["conv_gate Linear 256→512 → chunk"]
+    C1 --> XG["x_g [N,16,256]"]
+    C1 --> GT["gate [N,16,256] → sigmoid"]
+    XG --> DW["depthwise Conv1d k7 · pad 3 · groups 256<br/>시간축, 수용 범위 ±3 프레임 (2,048)"]
+    DW --> MUL["x_conv ⊙ σ(gate)"]
+    GT --> MUL
+    MUL --> CP["conv_proj Linear 256→256 → Dropout"]
+  end
+  I -->|"잔차"| R1["x + update"]
+  CP --> R1
+  R1 --> A0
+  subgraph ATT["_attention — 양방향 self-attention (263,680)"]
+    direction TB
+    A0["attn_norm LayerNorm"] --> A1["MHA 4 heads · 마스크 없음<br/>같은 패치의 16 프레임 전체"] --> A2["Dropout"]
+  end
+  R1 -->|"잔차"| R2["h + update"]
+  A2 --> R2
+  R2 --> O["permute 복원 → [B,512,256]"]
+```
+
+프레임 5 하나만 교란했을 때 영향 범위(eval 실측): conv = 프레임 2~8, attention = 16 프레임 전부, GatedFFN = 프레임 5 만.
+
+#### 1.5 SpatialBlock — 프레임 안 32 패치 간 self-attention, 잔차 1회
+
+```mermaid
+flowchart TD
+  I["[B,512,256] → view → [B·16, 32, 256]<br/>프레임 하나의 32 패치가 배치 항목"] --> N["LayerNorm"] --> A["MHA 4 heads · 마스크 없음<br/>32 패치 간 self-attention"] --> D["Dropout"] --> R["x + update (잔차)"]
+  I -->|"잔차"| R
+  R --> O["view 복원 → [B,512,256]"]
+```
+
+#### 1.6 GatedFFN — SwiGLU, 토큰별, 잔차 1회 (백본 6개 + 융합 블록 3개가 같은 클래스)
+
+```mermaid
+flowchart TD
+  I["x [·, 256]"] --> N["LayerNorm"]
+  N --> W1["w1 Linear 256→1024"] --> S["SiLU"]
+  N --> W2["w2 Linear 256→1024"]
+  S --> M["⊙"]
+  W2 --> M
+  M --> W3["w3 Linear 1024→256<br/>(융합 블록에서는 0 초기화)"] --> D["Dropout"] --> R["x + update (잔차)"]
+  I -->|"잔차"| R
+```
+
+### 2. 센서 브랜치 (`cp/cp_multimodal.py` + `sensor_frontends/` + `cp/cp_sensor_data.py`)
+
+```mermaid
+flowchart TD
+  classDef frozen stroke-dasharray: 5 5
+  subgraph CAM["Camera — QueryPool (460,800)"]
+    direction TB
+    C0["rsu png 640×480"]:::frozen --> C1["Resize 224 · CenterCrop 224<br/>ImageNet 정규화"]:::frozen --> C2["ViT-B/16 ImageNet 동결<br/>CLS 제외 패치 196"]:::frozen --> C3["캐시 [196,768] fp16"]:::frozen
+    C3 --> C4["Linear 768→256 + LN"] --> C5["학습 질의 1개 · MHA 4h<br/>196 → 1"] --> C6["1 토큰 [256]"]
+  end
+  subgraph LID["LiDAR — QueryPool (366,336)"]
+    direction TB
+    L0["rsu pcd 약 28k 점"]:::frozen --> L1["PointPillars 동결 (OpenCOOD)<br/>PillarVFE → Scatter → BEV"]:::frozen --> L2["BEV [384,100,176] fp16 캐시"]:::frozen --> L3["AdaptiveAvgPool 8×8<br/>→ [64 셀, 384] 캐시"]:::frozen
+    L3 --> L4["Linear 384→256 + LN"] --> L5["학습 질의 16개 · MHA 4h<br/>64 → 16"] --> L6["16 토큰 [16,256]"]
+  end
+  subgraph RAD["Radar — RadarCNN (72,672)"]
+    direction TB
+    R0["rsu json 검출 약 1,300개<br/>velocity · azimuth · depth"]:::frozen --> R1["래스터화<br/>거리 0~120 m → 64 bin<br/>방위 ±FOV/2 → 64 bin"]:::frozen --> R2["[2,64,64] fp16 캐시<br/>ch0 카운트 · ch1 평균 속도"]:::frozen
+    R2 --> R3["log1p(ch0)"] --> R4["Conv 2→32 s2 → [32,32,32]<br/>Conv 32→64 s2 → [64,16,16]<br/>Conv 64→64 s2 → [64,8,8]<br/>각 GELU"] --> R5["GAP → [64]"] --> R6["Linear 64→256"] --> R7["1 토큰 [256]"]
+  end
+  subgraph POS["Position — PosMLP (68,608)"]
+    direction TB
+    P0["cav yaml<br/>vehicle_pose / predicted_ego_pos / GPS<br/>+ vehicle_speed"]:::frozen --> P1["RSU 로컬 변환<br/>d = p − p_lidar · y 반전 · R_z(yaw)"]:::frozen --> P2["10차원 캐시<br/>dx dy dz r sinφ cosφ vx vy vz ‖v‖"]:::frozen
+    P2 --> P3["÷ POS_SCALE<br/>m → /100 · m/s → /10"] --> P4["Linear 10→256 → GELU<br/>Linear 256→256"] --> P5["token: 1 토큰 [256]<br/>broadcast: 백본 입구 32패치에 가산<br/>(마지막 Linear 0 초기화)"]
+  end
+```
+
+### 3. 센서 토큰 조립 — `encode_sensors`
+
+```mermaid
+flowchart LR
+  C["cam [B,16,1,256]"] -->|"+ modal_emb[0]"| CAT
+  L["lidar [B,16,16,256]"] -->|"+ modal_emb[1]"| CAT
+  R["radar [B,16,1,256]"] -->|"+ modal_emb[2]"| CAT
+  P["pos [B,16,1,256]"] -->|"+ modal_emb[3]"| CAT
+  CAT["cat(dim=2) 프레임 내<br/>→ [B,16,19,256]"] --> FE["+ frame_emb[k] [16,256]<br/>프레임 k 의 19 토큰 전부에"] --> FL["reshape → [B,304,256]<br/>토큰 j: 프레임 j // 19, 자리 j % 19"]
+```
+
+modal_emb [4,256] + frame_emb [16,256] = 5,120. 없는 모달은 cat 에서 빠지므로 n_tot 은 구성마다 1·17·18·19 로 달라지고, 융합 블록은 kv 길이에 무관하므로 그대로 동작한다.
+
+### 4. GatedXAttnBlock — 융합 블록 1개 (1,184,768; ×3)
+
+```mermaid
+flowchart TD
+  X["채널 토큰 x [B,512,256]"] --> QN["q_norm LayerNorm"]
+  S["센서 토큰 s [B,304,256]"] --> KN["kv_norm LayerNorm"]
+  QN -->|"Q"| MHA["MultiheadAttention 4 heads<br/>in_proj 정상 초기화 · out_proj = 0<br/>attn_mask 인과 (옵션, 실험 미사용)"]
+  KN -->|"K · V"| MHA
+  MHA --> AD["Dropout → a [B,512,256]<br/>순수 센서 유래 가중 평균"]
+  X --> CAT["cat[x ; a] → [B,512,512]"]
+  AD --> CAT
+  CAT --> G["gate Linear 512→256 = 0 → sigmoid<br/>g [B,512,256], 초기 0.5"]
+  G --> MUL["g ⊙ a"]
+  AD --> MUL
+  X -->|"잔차"| R["x + g ⊙ a"]
+  MUL --> R
+  R --> FFN["GatedFFN SwiGLU (w3 = 0)<br/>내부 잔차 포함"] --> O["갱신된 채널 토큰 [B,512,256]<br/>→ 다음 층 또는 헤드"]
+```
+
+0 초기화 3곳(out_proj → a = 0, gate → g = 0.5, w3 → FFN 증분 0)으로 학습 시작 시 블록 = 항등, 즉 mm:chiron 출력 = 채널 전용 chiron 출력(실측 max|diff| 0). 센서 토큰은 3층 내내 갱신되지 않는다.
+
+### 5. ChannelPredictionHead — 원본 헤드, 지평 4개 동시 출력 (9,978,368)
+
+```mermaid
+flowchart TD
+  T["fused channel tokens [B,512,256]"] --> PN["pool_norm LayerNorm"] -->|"K · V"| PA["pool_attn MHA 4 heads"]
+  Q["pool_query 학습 질의 [1,4,256] → expand [B,4,256]<br/>지평 h = 1..4 마다 1개"] -->|"Q"| PA
+  PA --> PO["pooled [B,4,256]"] --> M1["Linear 256→1024 · LN · GELU · Dropout"] --> M2["Linear 1024→1024 · LN · GELU · Dropout"] --> M3["Linear 1024→8192<br/>8192 = 64 안테나 · 64 부반송파 · 2"] --> V["view → [B,4,64,64,2]"] --> Y["Ŷ (delta_skip False: 절대 채널 직접 출력)"]
+```
+
+4개 질의가 같은 MLP 를 공유하므로 지평 차이는 질의 벡터에서만 나온다.
+
+### 6. 파라미터 분해 (전체 4모달 구성, 실측)
+
+| 부분 | 파라미터 | 비고 |
+|---|---|---|
+| 백본 몸통 | 9,178,368 | PatchEmbed 66,304 + 위치 12,288 + ChironBlock 6 × 1,516,544 + final_norm 512 |
+| 헤드 | 9,978,368 | 채널 전용 chiron 과 동일 |
+| 융합 3층 | 3,554,304 | 층당 attn 263,168 + gate 131,328 + ffn 789,248 + norm 1,024 |
+| 센서 인코더 | 968,416 | cam 460,800 + lidar 366,336 + radar 72,672 + pos 68,608 |
+| 임베딩 | 5,120 | modal_emb 1,024 + frame_emb 4,096 |
+| **합계** | **23,684,576** | 채널 전용 chiron 19,156,736 대비 +4,527,840 (융합이 증분의 78 %) |
+
+### 7. 설계 근거가 문서화되지 않은 항목 (2026-09-18 미팅 지적)
+
+- 패치 4×32 로 자르고 시간을 배치로 붙인 근거, flatten 후 Linear 라 2D 패치의 의미
+- TemporalBlock 의 게이트 dw-conv 를 attention 앞에 둔 근거(게이트 제거 절제 없음)
+- 헤드 구조(표준 디코더의 masked self-attention · FFN 과의 대조)
+- 융합에서 채널 = Q · 센서 = K/V 로 둔 근거, 토큰 축 cat 후 256 차원으로 통일한 의도
+- 센서 간 상호작용 없음(센서끼리는 cat 뿐)
+
+이 항목들은 AI 제안 구조이며, v2 설계에서 표준 Transformer 와 대조해 역할·장점을 먼저 정리해야 한다.
+
 ## 파일 색인
 
 ### 모델 (아키텍처 설명은 이 두 파일이면 충분)
