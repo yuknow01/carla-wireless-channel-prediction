@@ -3,7 +3,7 @@
 **목적**: 융합 구조를 새로 설계하기 전에, 2026-09-07 ~ 09-17 에 실험한 멀티모달 채널 예측 모델 `mm:chiron` 의 코드·문서·프로브를 **그대로 보존**한다.
 이 폴더의 파일은 수정하지 않는다. 새 설계는 별도 폴더(예: `multimodal_v2_*`)에 만든다.
 
-- 스냅샷 일자: 2026-09-18
+- 스냅샷 일자: 2026-09-18 (코드 최종 수정 9/7 19:56 이후 무수정 → 아래 run 전부가 이 코드로 학습됨)
 - 원본 위치: `/mnt/ssd_7t_2/carla-wireless-dataset/mmw_reproduction/channel_pred_feasibility/` (cp/, scripts/→probe/, *.md) 및 `mmw_reproduction/` (precompute_*), `multimodal_code_index/models/chiron_channel.py`
 - 원본은 git 미추적 상태였으므로 이 스냅샷이 유일한 버전 기록이다.
 - 태스크: 채널 예측 K=16 → H=4 (Δt 10 ms), 64 안테나 × 64 부반송파, RX 행 표본, 논문 [B] arXiv:2603.15093 데이터셋(RSU 센서)
@@ -34,7 +34,7 @@ X [B,16,64,64,2] → chiron 백본 몸통 (patch 4×32 → ChironBlock ×6 → f
 | 파일 | 역할 |
 |---|---|
 | `cp/cp_sensor_data.py` | 센서 캐시 생성(`build_lidar_pool` 126, `radar_raster` 149, `build_pos` 180)과 로더(`RSUSensorStore` 211, `PosStore` 257, `MMWindowSet` 269). 위치 변환 `rsu_local` 56, 10차원 특징 `pos_features` 68 |
-| `cp/cp_data.py` | 채널 창 K=16→H=4, RX 행 표본, 창별 RMS 정규화, NMSE(raw·align) 정의 |
+| `cp/cp_data.py` | 채널 창 K=16→H=4, RX 행 표본, 창별 RMS 정규화, NMSE(raw·align) 정의. T1(시간 기준) 분할이 9/14 에 추가된 버전. B1·seed 0 run 은 그 전 버전 `cp/cp_data.py.bak_preT1_20260914` 로 학습됨 |
 | `cp/cp_models.py` | 모델 레지스트리. `--model mm:chiron` → `build_mm_model` 분기(92~93행) |
 | `cp/cp_repo_models.py` | `repo:chiron` 등 저장소 모델 래퍼(`RepoWrap`, `m.` 접두) |
 | `cp/train_cp.py` | 학습 진입점. mm 전용 인자 `--sensors --pos_source --pos_mode --fuse_layers --causal_mask --backbone_init` (26~31행). 손실 = 4지평 합산 NMSE(83행) |
@@ -58,6 +58,12 @@ radar(래스터화)·pos(좌표 변환)는 사전학습 앞단이 없고 `cp_sen
 | `docs/FORMULAS.md` | 수식 모음. §8 센서 특징, §9 게이트 cross-attention |
 | `docs/EXPERIMENT_PLAN_MULTIMODAL_20260907.md` | 실험 계획(절제 프로토콜·판정 규칙) |
 | `docs/REPORT_MULTIMODAL_CP_FINAL_20260917.md` | 최종 결과 리포트(B1·seed 0·T1 분할). 본문 중 지도·사진 링크는 원본 저장소 상대 경로라 여기서는 열리지 않음 |
+
+### 실험 기록
+
+| 파일 | 내용 |
+|---|---|
+| `run_records/` | 최근 run 33개(mm B1 20 · T1 mm 7 · 채널 전용 chiron 기준선 6)의 `config.json`·`result.json`·`metrics.csv`·`sensor_ablation.json`·`train.log`. 결과 요약표는 `run_records/README.md`. 가중치(best.pt)는 제외 |
 
 ### 프로브
 
@@ -88,7 +94,7 @@ radar(래스터화)·pos(좌표 변환)는 사전학습 앞단이 없고 `cp_sen
 
 ## 포함하지 않은 것
 
-- 캐시(`derived/`, `derived_cp/sensor_cache/`), 체크포인트(`outputs_cp/*/best.pt`), 학습 로그, 원본 센서 데이터, PointPillars 체크포인트 파일.
+- 캐시(`derived/`, `derived_cp/sensor_cache/`), 체크포인트(`outputs_cp/*/best.pt`, run 당 94.5 MB), 원본 센서 데이터, PointPillars 체크포인트 파일.
 - `cp/cp_lwm11.py`, `cp/third_party/` (채널 전용 LWM 모델용, `cp_models.py` 에서 지연 import 라 이 폴더만으로 `mm:chiron` 은 import 가능).
 
 ## 이 폴더만으로 모델을 띄우는 법
