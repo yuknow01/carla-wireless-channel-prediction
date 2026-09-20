@@ -1,0 +1,87 @@
+[ref] 채널 전용 ChironChannelPredictor params 19,156,736 | X [2, 16, 64, 64, 2] → [2, 4, 64, 64, 2]
+[full_input] sensors ['cam', 'lidar', 'radar', 'pos'] n_tok {'cam': 1, 'lidar': 1, 'radar': 1, 'pos': 1} fuse_where input | total 20,388,576 (fusion 267,264, enc 964,576) | max|diff| vs 채널전용 0.000e+00 | attn {"channel": 0.2001, "cam": 0.2, "lidar": 0.1999, "radar": 0.2, "pos": 0.2001} | 0.6s
+      backbone.patch_embed         [32, 32, 256]
+      enc.cam                      [2, 16, 1, 256]
+      enc.lidar                    [2, 16, 1, 256]
+      enc.radar                    [2, 16, 1, 256]
+      enc.pos                      [2, 16, 1, 256]
+      fusion[0].U(in)              [2, 16, 5, 256]
+      fusion[0].f(out)             [2, 16, 256]
+      backbone.blocks[0]           [2, 512, 256]
+      backbone.final_norm          [2, 512, 256]
+      backbone.head                [2, 4, 64, 64, 2]
+      grads: query 0.0, in_proj 0.0, out_proj 73.93168640136719, enc {"cam": 0.0, "lidar": 0.0, "radar": 0.0, "pos": 0.0}
+[full_output] sensors ['cam', 'lidar', 'radar', 'pos'] n_tok {'cam': 1, 'lidar': 1, 'radar': 1, 'pos': 1} fuse_where output | total 20,388,576 (fusion 267,264, enc 964,576) | max|diff| vs 채널전용 0.000e+00 | attn {"channel": 0.2001, "cam": 0.2, "lidar": 0.2, "radar": 0.2, "pos": 0.2} | 0.5s
+      backbone.patch_embed         [32, 32, 256]
+      backbone.blocks[0]           [2, 512, 256]
+      backbone.final_norm          [2, 512, 256]
+      enc.cam                      [2, 16, 1, 256]
+      enc.lidar                    [2, 16, 1, 256]
+      enc.radar                    [2, 16, 1, 256]
+      enc.pos                      [2, 16, 1, 256]
+      fusion[0].U(in)              [2, 16, 5, 256]
+      fusion[0].f(out)             [2, 16, 256]
+      backbone.head                [2, 4, 64, 64, 2]
+      grads: query 0.0, in_proj 0.0, out_proj 18.166269302368164, enc {"cam": 0.0, "lidar": 0.0, "radar": 0.0, "pos": 0.0}
+[full_input_no_zero_init] sensors ['cam', 'lidar', 'radar', 'pos'] n_tok {'cam': 1, 'lidar': 1, 'radar': 1, 'pos': 1} fuse_where input | total 20,388,576 (fusion 267,264, enc 964,576) | max|diff| vs 채널전용 1.490e+00 | attn {"channel": 0.1999, "cam": 0.2, "lidar": 0.2, "radar": 0.2, "pos": 0.2002} | 0.5s
+      backbone.patch_embed         [32, 32, 256]
+      enc.cam                      [2, 16, 1, 256]
+      enc.lidar                    [2, 16, 1, 256]
+      enc.radar                    [2, 16, 1, 256]
+      enc.pos                      [2, 16, 1, 256]
+      fusion[0].U(in)              [2, 16, 5, 256]
+      fusion[0].f(out)             [2, 16, 256]
+      backbone.blocks[0]           [2, 512, 256]
+      backbone.final_norm          [2, 512, 256]
+      backbone.head                [2, 4, 64, 64, 2]
+      grads: query 0.11650215089321136, in_proj 29.473390579223633, out_proj 35.85620880126953, enc {"cam": 1.811, "lidar": 2.235, "radar": 0.801, "pos": 43.853}
+[full_input_no_channel_token] sensors ['cam', 'lidar', 'radar', 'pos'] n_tok {'cam': 1, 'lidar': 1, 'radar': 1, 'pos': 1} fuse_where input | total 20,388,576 (fusion 267,264, enc 964,576) | max|diff| vs 채널전용 0.000e+00 | attn {"cam": 0.25, "lidar": 0.2501, "radar": 0.25, "pos": 0.2499} | 0.4s
+      backbone.patch_embed         [32, 32, 256]
+      enc.cam                      [2, 16, 1, 256]
+      enc.lidar                    [2, 16, 1, 256]
+      enc.radar                    [2, 16, 1, 256]
+      enc.pos                      [2, 16, 1, 256]
+      fusion[0].U(in)              [2, 16, 4, 256]
+      fusion[0].f(out)             [2, 16, 256]
+      backbone.blocks[0]           [2, 512, 256]
+      backbone.final_norm          [2, 512, 256]
+      backbone.head                [2, 4, 64, 64, 2]
+      grads: query 0.0, in_proj 0.0, out_proj 92.37141418457031, enc {"cam": 0.0, "lidar": 0.0, "radar": 0.0, "pos": 0.0}
+[cam_lidar_radar_input] sensors ['cam', 'lidar', 'radar'] n_tok {'cam': 1, 'lidar': 1, 'radar': 1} fuse_where input | total 20,319,968 (fusion 267,264, enc 895,968) | max|diff| vs 채널전용 0.000e+00 | attn {"channel": 0.25, "cam": 0.25, "lidar": 0.25, "radar": 0.25} | 0.4s
+      backbone.patch_embed         [32, 32, 256]
+      enc.cam                      [2, 16, 1, 256]
+      enc.lidar                    [2, 16, 1, 256]
+      enc.radar                    [2, 16, 1, 256]
+      fusion[0].U(in)              [2, 16, 4, 256]
+      fusion[0].f(out)             [2, 16, 256]
+      backbone.blocks[0]           [2, 512, 256]
+      backbone.final_norm          [2, 512, 256]
+      backbone.head                [2, 4, 64, 64, 2]
+      grads: query 0.0, in_proj 0.0, out_proj 19.593685150146484, enc {"cam": 0.0, "lidar": 0.0, "radar": 0.0}
+[radar_input] sensors ['radar'] n_tok {'radar': 1} fuse_where input | total 19,496,672 (fusion 267,264, enc 72,672) | max|diff| vs 채널전용 0.000e+00 | attn {"channel": 0.5, "radar": 0.5} | 0.4s
+      backbone.patch_embed         [32, 32, 256]
+      enc.radar                    [2, 16, 1, 256]
+      fusion[0].U(in)              [2, 16, 2, 256]
+      fusion[0].f(out)             [2, 16, 256]
+      backbone.blocks[0]           [2, 512, 256]
+      backbone.final_norm          [2, 512, 256]
+      backbone.head                [2, 4, 64, 64, 2]
+      grads: query 0.0, in_proj 0.0, out_proj 39.42030334472656, enc {"radar": 0.0}
+[cam_input] sensors ['cam'] n_tok {'cam': 1} fuse_where input | total 19,884,800 (fusion 267,264, enc 460,800) | max|diff| vs 채널전용 0.000e+00 | attn {"channel": 0.5, "cam": 0.5} | 0.4s
+      backbone.patch_embed         [32, 32, 256]
+      enc.cam                      [2, 16, 1, 256]
+      fusion[0].U(in)              [2, 16, 2, 256]
+      fusion[0].f(out)             [2, 16, 256]
+      backbone.blocks[0]           [2, 512, 256]
+      backbone.final_norm          [2, 512, 256]
+      backbone.head                [2, 4, 64, 64, 2]
+      grads: query 0.0, in_proj 0.0, out_proj 36.57756042480469, enc {"cam": 0.0}
+[lidar16_input] sensors ['lidar'] n_tok {'lidar': 16} fuse_where input | total 19,790,336 (fusion 267,264, enc 366,336) | max|diff| vs 채널전용 0.000e+00 | attn {"channel": 0.0588, "lidar": 0.9412} | 0.4s
+      backbone.patch_embed         [32, 32, 256]
+      enc.lidar                    [2, 16, 16, 256]
+      fusion[0].U(in)              [2, 16, 17, 256]
+      fusion[0].f(out)             [2, 16, 256]
+      backbone.blocks[0]           [2, 512, 256]
+      backbone.final_norm          [2, 512, 256]
+      backbone.head                [2, 4, 64, 64, 2]
+      grads: query 0.0, in_proj 0.0, out_proj 6.5968828201293945, enc {"lidar": 0.0}

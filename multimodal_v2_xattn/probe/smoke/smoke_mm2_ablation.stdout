@@ -1,0 +1,18 @@
+/mnt/ssd_7t_2/carla-wireless-dataset/mmw_reproduction/channel_pred_feasibility/multimodal_v2_xattn/cp/eval_sensor_ablation_cp.py:88: UserWarning: The given NumPy array is not writable, and PyTorch does not support non-writable tensors. This means writing to this tensor will result in undefined behavior. You may want to copy the array to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_numpy.cpp:203.)
+  idx, mm = load_index(cfg["setting"], cfg["Ksc"]); F = torch.from_numpy(np.asarray(mm)); Nr = F.shape[1]; K, H = cfg["K_hist"], cfg["H_pred"]
+[smoke_mm2_full_input] model mm2:chiron sensors ['cam', 'lidar', 'radar', 'pos'] token_mods ['cam', 'lidar', 'radar', 'pos'] n_tok {'cam': 1, 'lidar': 1, 'radar': 1, 'pos': 1} pos_mode token fuse_layers 1 | val windows 2439 (x16) scenes ['Town03_gastation', 'Town05_ringroad', 'Town10_crossroad'] | ckpt ep 1 | load 1s
+  [main] 32/192 1s (load 0s) mem 1355 MB
+  [main] 192/192 2s (load 1s) mem 1355 MB
+
+== sensor_ablation smoke_mm2_full_input | n 192 (12/2439 windows x 16 RX) | median NMSE dB (Δ vs real) ==
+condition             h1      h2      h3      h4 |     Δh1     Δh2     Δh3     Δh4 | pooled     h1     h2     h3     h4 | gate
+real                0.36    0.37    0.39    0.41 |   +0.00   +0.00   +0.00   +0.00 |          0.42   0.42   0.41   0.40 | -
+zero                0.35    0.37    0.39    0.41 |   -0.00   -0.00   -0.00   +0.00 |          0.42   0.42   0.41   0.40 | -
+shuffle             0.36    0.37    0.39    0.41 |   +0.00   +0.00   +0.00   +0.00 |          0.42   0.42   0.41   0.40 | -
+none                0.36    0.37    0.39    0.41 |   +0.00   +0.00   -0.00   +0.00 |          0.42   0.42   0.41   0.40 | -
+
+[diag real] gate_mean per layer [] | ‖g⊙A‖/‖Z‖ [0.0] | ‖A‖/‖Z‖ [0.0]
+  L1 mass {"channel": 0.1997, "cam": 0.2002, "lidar": 0.1999, "radar": 0.2001, "pos": 0.2001} per_token {"channel": 0.1997, "cam": 0.2002, "lidar": 0.1999, "radar": 0.2001, "pos": 0.2001} share {"channel": 0.2, "cam": 0.2, "lidar": 0.2, "radar": 0.2, "pos": 0.2} frame(last4) [0.0, 0.0, 0.0, 0.0]
+[check main_real_vs_result_json] comparable False n 192 vs 39024 | median diff [-0.0793, -0.0741, -0.0445, -0.0311] pooled diff [-0.0886, -0.0867, -0.0891, -0.0941] | max|diff| 0.0941 dB ok≤0.01 None
+[mem] peak allocated 1355 MB reserved 1758 MB | total 2s | loader {"window_hit": 392, "window_miss": 24, "sensor_sec": 0.03510236740112305, "batches": 1, "store_frame_hit": 8, "store_frame_miss": 376, "store_disk_bytes": 137838592, "store_missing_rows": 0, "frames_in_ram": 376, "windows_in_ram": 24}
+saved ../probe/smoke/smoke_mm2_full_input/sensor_ablation.json
